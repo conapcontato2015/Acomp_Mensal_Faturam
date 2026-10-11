@@ -1,0 +1,188 @@
+"""De onde vem o responsável de cada empresa.
+
+Hoje a carteira é mantida à mão (qualquer usuário troca) ou por planilha. Quando o sistema
+externo que define os responsáveis for ligado, basta implementar ``ProvedorApi.buscar`` (ou
+escrever outro provedor) e trocar ``RESPONSAVEIS_PROVEDOR`` no .env — o resto do sistema não muda.
+
+Todo provedor devolve uma lista de ``Atribuicao``; ``sincronizar`` aplica a lista gravando a
+origem (planilha/integração) no histórico e devolve um relatório.
+"""
+from __future__ import annotations
+
+import csv
+import io
+from dataclasses import dataclass, field
+from datetime import date
+
+from flask import current_app
+from openpyxl import load_workbook
+
+from .extensions import db
+from .models import ORIGEM_INTEGRACAO, ORIGEM_PLANILHA, Usuario
+from .services.empresas import buscar_por_cnpj, buscar_por_nome, definir_responsavel, responsavel_em
+from .util import ValorInvalido, competencia, competencia_atual, normalizar_nome, so_digitos
+
+
+@dataclass
+class Atribuicao:
+    responsavel: str
+    cnpj: str | None = None
+    empresa: str | None = None
+    inicio: date | None = None
+    linha: int | None = None
+
+
+@dataclass
+class RelatorioSincronizacao:
+    alteradas: list[str] = field(default_factory=list)
+    sem_mudanca: int = 0
+    empresas_nao_encontradas: list[str] = field(default_factory=list)
+    responsaveis_nao_encontrados: list[str] = field(default_factory=list)
+    erros: list[str] = field(default_factory=list)
+
+    def como_dict(self) -> dict:
+        return {
+            "alteradas": self.alteradas, "sem_mudanca": self.sem_mudanca,
+            "empresas_nao_encontradas": self.empresas_nao_encontradas,
+            "responsaveis_nao_encontrados": self.responsaveis_nao_encontrados, "erros": self.erros,
+        }
+
+
+class ProvedorResponsaveis:
+    origem = ORIGEM_INTEGRACAO
+    nome = "base"
+
+    def buscar(self) -> list[Atribuicao]:  # pragma: no cover - interface
+        raise NotImplementedError
+
+
+class ProvedorManual(ProvedorResponsaveis):
+    """Padrão: sem fonte externa. A carteira é editada na tela de Empresas."""
+
+    nome = "manual"
+
+    def buscar(self) -> list[Atribuicao]:
+        return []
+
+
+class ProvedorPlanilha(ProvedorResponsaveis):
+    """Lê .xlsx ou .csv com colunas: CNPJ e/ou EMPRESA, RESPONSAVEL e (opcional) INICIO (AAAA-MM ou MM/AAAA)."""
+
+    origem = ORIGEM_PLANILHA
+    nome = "planilha"
+
+    def __init__(self, conteudo: bytes, nome_arquivo: str):
+        self.conteudo = conteudo
+        self.nome_arquivo = nome_arquivo
+
+    def _linhas(self) -> list[list]:
+        if self.nome_arquivo.lower().endswith((".xlsx", ".xlsm")):
+            wb = load_workbook(io.BytesIO(self.conteudo), read_only=True, data_only=True)
+            ws = wb.worksheets[0]
+            return [list(r) for r in ws.iter_rows(values_only=True)]
+        texto = self.conteudo.decode("utf-8-sig", errors="replace")
+        dialeto = csv.Sniffer().sniff(texto[:2048], delimiters=";,\t") if texto.strip() else csv.excel
+        return [r for r in csv.reader(io.StringIO(texto), dialeto)]
+
+    def buscar(self) -> list[Atribuicao]:
+        linhas = self._linhas()
+        if not linhas:
+            return []
+        cab = [normalizar_nome(c) for c in linhas[0]]
+
+        def idx(*nomes):
+            for n in nomes:
+                if n in cab:
+                    return cab.index(n)
+            return None
+
+        i_cnpj, i_emp = idx("CNPJ"), idx("EMPRESA", "RAZAO SOCIAL", "NOME")
+        i_resp, i_ini = idx("RESPONSAVEL", "RESPONSÁVEL", "USUARIO"), idx("INICIO", "A PARTIR DE", "COMPETENCIA")
+        if i_resp is None or (i_cnpj is None and i_emp is None):
+            raise ValorInvalido("A planilha precisa das colunas RESPONSAVEL e CNPJ ou EMPRESA (na primeira linha).")
+        saida = []
+        for n, linha in enumerate(linhas[1:], start=2):
+            def val(i):
+                return linha[i] if i is not None and i < len(linha) and linha[i] is not None else None
+            resp = val(i_resp)
+            if not resp or not str(resp).strip():
+                continue
+            ini = val(i_ini)
+            saida.append(Atribuicao(
+                responsavel=str(resp).strip(),
+                cnpj=so_digitos(val(i_cnpj)) or None,
+                empresa=str(val(i_emp)).strip() if val(i_emp) else None,
+                inicio=competencia(ini) if ini else None,
+                linha=n,
+            ))
+        return saida
+
+
+class ProvedorApi(ProvedorResponsaveis):
+    """Ponto de encaixe do sistema externo de responsáveis (ainda não definido).
+
+    Para ligar: implemente ``buscar`` chamando a API/arquivo/banco do outro sistema e
+    devolvendo ``Atribuicao(responsavel=..., cnpj=..., inicio=...)``. Configure no .env:
+    RESPONSAVEIS_PROVEDOR=api, RESPONSAVEIS_API_URL=..., RESPONSAVEIS_API_TOKEN=...
+    """
+
+    nome = "api"
+
+    def __init__(self, url: str, token: str = ""):
+        self.url = url
+        self.token = token
+
+    def buscar(self) -> list[Atribuicao]:
+        raise NotImplementedError(
+            "Integração com o sistema de responsáveis ainda não implementada. "
+            "Enquanto isso, troque na tela de Empresas ou importe uma planilha."
+        )
+
+
+def provedor_configurado() -> ProvedorResponsaveis:
+    tipo = current_app.config.get("RESPONSAVEIS_PROVEDOR", "manual")
+    if tipo == "api":
+        return ProvedorApi(current_app.config.get("RESPONSAVEIS_API_URL", ""),
+                           current_app.config.get("RESPONSAVEIS_API_TOKEN", ""))
+    return ProvedorManual()
+
+
+def _achar_usuario(nome: str) -> Usuario | None:
+    alvo = normalizar_nome(nome)
+    for u in db.session.query(Usuario).all():
+        if normalizar_nome(u.nome) == alvo or (u.external_id and u.external_id == nome):
+            return u
+    return None
+
+
+def sincronizar(provedor: ProvedorResponsaveis, registrado_por: Usuario | None,
+                inicio_padrao: date | None = None, aplicar: bool = True) -> RelatorioSincronizacao:
+    """Aplica as atribuições do provedor. Com ``aplicar=False`` só simula (prévia)."""
+    rel = RelatorioSincronizacao()
+    inicio_padrao = inicio_padrao or competencia_atual()
+    try:
+        atribs = provedor.buscar()
+    except (ValorInvalido, NotImplementedError) as exc:
+        rel.erros.append(str(exc))
+        return rel
+    for a in atribs:
+        empresa = buscar_por_cnpj(a.cnpj) if a.cnpj else None
+        if empresa is None and a.empresa:
+            empresa = buscar_por_nome(a.empresa)
+        rotulo = a.empresa or a.cnpj or f"linha {a.linha}"
+        if empresa is None:
+            rel.empresas_nao_encontradas.append(rotulo)
+            continue
+        usuario = _achar_usuario(a.responsavel)
+        if usuario is None:
+            rel.responsaveis_nao_encontrados.append(f"{a.responsavel} ({rotulo})")
+            continue
+        inicio = a.inicio or inicio_padrao
+        atual = responsavel_em(empresa, inicio)
+        if atual is not None and atual.id == usuario.id:
+            rel.sem_mudanca += 1
+            continue
+        rel.alteradas.append(f"{empresa.nome}: {atual.nome if atual else '—'} → {usuario.nome}")
+        if aplicar:
+            definir_responsavel(empresa, usuario, inicio, registrado_por, origem=provedor.origem)
+    return rel

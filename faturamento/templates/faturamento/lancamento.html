@@ -1,0 +1,170 @@
+{% extends "faturamento/base.html" %}
+{% from "faturamento/_filtros.html" import seletor_competencia, aviso_leitura %}
+{% block titulo %}Lançamento{% endblock %}
+{% block conteudo %}
+<nav class="trilha" aria-label="Caminho"><a href="{{ url_for('faturamento.painel', competencia=comp|comp_iso) }}">Painel do mês</a> › Lançamento</nav>
+
+{% if not empresa %}
+  <header class="cabecalho"><div class="titulo"><h1>Lançamento</h1></div></header>
+  <div class="cartao vazio">Nenhuma empresa na sua carteira. <a href="{{ url_for('faturamento.empresas') }}">Cadastre empresas</a> ou <a href="{{ url_for('faturamento.importacao') }}">importe a planilha</a>.</div>
+{% else %}
+<header class="cabecalho">
+  <div class="titulo">
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
+      <h1>{{ empresa.nome }}</h1>
+      <span class="pilula {{ status }}">{{ rotulos[status] }}</span>
+    </div>
+    <span class="muted">CNPJ {{ empresa.cnpj_formatado or '[não informado]' }} · Responsável em {{ comp|comp_curta }}: <strong>{{ responsavel.nome if responsavel else '—' }}</strong></span>
+  </div>
+  <form class="acoes" method="get" data-navegar>
+    {{ seletor_competencia(comp, competencias) }}
+    <label class="campo"><span>Empresa</span>
+      <select class="entrada" name="empresa" style="min-width:280px">
+        <optgroup label="Minha carteira">
+          {% for e in minhas %}<option value="{{ e.id }}" {{ 'selected' if e.id == empresa.id }}>{{ e.nome }}</option>{% endfor %}
+        </optgroup>
+        <optgroup label="Outras carteiras (somente leitura)">
+          {% for e in todas if e not in minhas %}<option value="{{ e.id }}" {{ 'selected' if e.id == empresa.id }}>{{ e.nome }}</option>{% endfor %}
+        </optgroup>
+      </select>
+    </label>
+  </form>
+</header>
+
+{% if futura %}<div class="aviso erro">Competência futura: não é possível lançar.</div>{% endif %}
+
+{% if not pode_editar %}
+  {{ aviso_leitura(responsavel.nome if responsavel else 'outra pessoa') }}
+  <label class="nao-imprimir" style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer">
+    <input type="checkbox" id="substituto" style="width:18px;height:18px;accent-color:var(--laranja)"> Lançar como substituto (estou cobrindo esta carteira)
+  </label>
+{% endif %}
+
+<div class="cartao pad" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
+  <span class="muted">Origem dos números: <strong style="color:var(--tinta)">relatório da SEFAZ</strong>, digitação manual. Ajustes = arquivos da empresa que não constam no relatório.</span>
+  <button class="btn" type="button" disabled title="Fase futura: importar direto do sistema contábil">Importar do sistema contábil · em breve</button>
+</div>
+
+<section class="grade-kpi" aria-label="Totais do mês">
+  <div class="kpi"><span class="rotulo">Entradas autorizadas</span><span class="valor" style="font-size:22px">R$ <span id="t-ent">—</span></span></div>
+  <div class="kpi"><span class="rotulo">Saídas autorizadas</span><span class="valor" style="font-size:22px">R$ <span id="t-sai">—</span></span></div>
+  <div class="kpi"><span class="rotulo">Canceladas</span><span class="valor" style="font-size:22px">R$ <span id="t-canc">—</span></span></div>
+  <div class="kpi"><span class="rotulo">Linhas que bateram</span><span class="valor" style="font-size:22px" id="t-ok">—</span></div>
+</section>
+
+<form id="form-lanc" class="cartao rolagem" data-empresa="{{ empresa.id }}" data-comp="{{ comp|comp_iso }}" data-editavel="{{ '1' if pode_editar and not futura else '0' }}" autocomplete="off">
+  <table class="tabela grade-lanc" style="min-width:1040px">
+    <thead>
+      <tr>
+        <th></th><th colspan="4" class="grupo">AUTORIZADAS</th><th colspan="4" class="grupo canc">CANCELADAS</th><th></th>
+      </tr>
+      <tr>
+        <th>Tipo</th><th class="num">Qtde</th><th class="num">Valor (R$)</th><th style="text-align:center">Ajuste</th><th class="num">Total (R$)</th>
+        <th class="num">Qtde</th><th class="num">Valor (R$)</th><th style="text-align:center">Ajuste</th><th class="num">Total (R$)</th>
+        <th style="text-align:center">Bateu</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for sentido, titulo in [('E', 'ENTRADAS'), ('S', 'SAÍDAS')] %}
+      {% set grupo = linhas|selectattr('tipo.sentido', 'equalto', sentido)|list %}
+      {% if grupo %}
+      <tr class="sentido"><td colspan="10">{{ titulo }}</td></tr>
+      {% for l in grupo %}
+      <tr class="linha" data-tipo-id="{{ l.tipo.id }}" data-tipo="{{ l.tipo.nome }}" data-sentido="{{ sentido }}" data-lanc-id="{{ l.lancamento.id if l.lancamento else '' }}" data-bateu="{{ '1' if l.bateu else '0' }}">
+        <td style="font-weight:500;padding-left:14px">{{ l.tipo.nome }}</td>
+        <td><input class="celula" name="qtde_autor" inputmode="numeric" aria-label="Quantidade autorizada {{ l.tipo.nome }}" value="{{ l.qtde_autor|inteiro('') if l.qtde_autor is not none else '' }}"></td>
+        <td><input class="celula" name="valor_autor" inputmode="decimal" aria-label="Valor autorizado {{ l.tipo.nome }}" value="{{ l.valor_autor|moeda('') if l.valor_autor is not none else '' }}"></td>
+        <td><button type="button" class="btn-ajuste" data-grupo="AUTOR" aria-label="Ajustes de autorizadas {{ l.tipo.nome }}"></button></td>
+        <td class="num" style="font-weight:600" data-total="autor">—</td>
+        <td><input class="celula" name="qtde_canc" inputmode="numeric" aria-label="Quantidade cancelada {{ l.tipo.nome }}" value="{{ l.qtde_canc|inteiro('') if l.qtde_canc is not none else '' }}"></td>
+        <td><input class="celula" name="valor_canc" inputmode="decimal" aria-label="Valor cancelado {{ l.tipo.nome }}" value="{{ l.valor_canc|moeda('') if l.valor_canc is not none else '' }}"></td>
+        <td><button type="button" class="btn-ajuste" data-grupo="CANC" aria-label="Ajustes de canceladas {{ l.tipo.nome }}"></button></td>
+        <td class="num" style="font-weight:600" data-total="canc">—</td>
+        <td style="text-align:center"><input type="checkbox" class="chk-bateu" {{ 'checked' if l.bateu }} aria-label="{{ l.tipo.nome }} bateu com o sistema contábil" style="width:20px;height:20px;accent-color:var(--marinho);cursor:pointer"></td>
+      </tr>
+      <tr class="msg-erro" hidden><td colspan="10" class="small" style="color:var(--laranja-texto);padding-left:14px"></td></tr>
+      {% endfor %}
+      {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if not linhas %}<div class="vazio">Esta empresa não tem tipos de documento definidos. <a href="{{ url_for('faturamento.empresa_form', eid=empresa.id) }}">Definir tipos usados</a>.</div>{% endif %}
+</form>
+
+<div class="nao-imprimir" style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px">
+  <span class="muted small">Campos aceitam só números. Diferenças contra os arquivos da empresa entram como ajuste, com motivo. Linha que bateu fica travada.</span>
+  <div style="display:flex;flex-wrap:wrap;gap:10px">
+    {% if status == 'sem_movimento' %}
+      <button class="btn" type="button" id="btn-sem-mov" data-valor="pendente">Desfazer "sem movimento"</button>
+    {% elif status == 'pendente' %}
+      <button class="btn" type="button" id="btn-sem-mov" data-valor="sem_movimento">Marcar sem movimento</button>
+    {% endif %}
+    <button class="btn primario" type="button" id="btn-salvar">Salvar</button>
+    {% if proxima %}<a class="btn" href="{{ url_for('faturamento.lancamento', empresa=proxima.id, competencia=comp|comp_iso) }}">Próxima empresa →</a>{% endif %}
+  </div>
+</div>
+
+{% set ns = namespace(max=0) %}
+{% for p in evolucao %}{% set ns.max = [ns.max, p.entradas + p.entradas_ajuste, p.saidas + p.saidas_ajuste]|max %}{% endfor %}
+<section class="cartao pad" aria-label="Entradas e saídas por mês" style="display:flex;flex-direction:column;gap:14px">
+  <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px">
+    <div>
+      <h2>Entradas e saídas autorizadas por mês · todos os tipos</h2>
+      {% set com_aj = evolucao|selectattr('entradas_ajuste')|list + evolucao|selectattr('saidas_ajuste')|list %}
+      <span class="muted small">{% if com_aj %}Meses com ajuste: {{ (com_aj|map(attribute='rotulo')|unique|list)|join(', ') }}. {% endif %}Passe o mouse nas barras para ver os valores.</span>
+    </div>
+    <div class="legenda">
+      <span><i style="background:var(--marinho)"></i>Entradas</span>
+      <span><i style="background:var(--laranja)"></i>Saídas</span>
+      <span><i style="background:repeating-linear-gradient(45deg,#9DA9C9 0 3px,#F6B08F 3px 6px)"></i>Parte de ajuste (tom claro)</span>
+    </div>
+  </div>
+  <div class="grafico">
+    {% for p in evolucao %}
+    {% set esc = 180 / ns.max if ns.max else 0 %}
+    <div class="mes">
+      <div class="coluna" title="{{ p.rotulo }} · Entradas R$ {{ (p.entradas + p.entradas_ajuste)|moeda }}{% if p.entradas_ajuste %} (ajuste R$ {{ p.entradas_ajuste|moeda }}){% endif %}">
+        <div class="seg topo" style="height:{{ (p.entradas_ajuste * esc)|round|int }}px;background:#9DA9C9"></div>
+        <div class="seg {{ 'topo' if not p.entradas_ajuste }}" style="height:{{ (p.entradas * esc)|round|int }}px;background:var(--marinho)"></div>
+      </div>
+      <div class="coluna" title="{{ p.rotulo }} · Saídas R$ {{ (p.saidas + p.saidas_ajuste)|moeda }}{% if p.saidas_ajuste %} (ajuste R$ {{ p.saidas_ajuste|moeda }}){% endif %}">
+        <div class="seg topo" style="height:{{ (p.saidas_ajuste * esc)|round|int }}px;background:#F6B08F"></div>
+        <div class="seg {{ 'topo' if not p.saidas_ajuste }}" style="height:{{ (p.saidas * esc)|round|int }}px;background:var(--laranja)"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="grafico-rotulos">
+    {% for p in evolucao %}<span class="{{ 'atual' if loop.last }}">{{ p.rotulo }}</span>{% endfor %}
+  </div>
+</section>
+
+<dialog id="dlg-ajuste" aria-labelledby="dlg-titulo">
+  <form method="dialog" id="form-ajuste">
+    <div>
+      <h2 id="dlg-titulo" style="font-size:19px">Ajuste</h2>
+      <span class="muted small">{{ empresa.nome }} · {{ comp|comp_curta }}</span>
+    </div>
+    <div class="lista-ajustes" id="lista-ajustes"></div>
+    <div class="linha2">
+      <label class="campo"><span>Quantidade</span><input class="entrada" name="qtde" inputmode="numeric" placeholder="+0" required></label>
+      <label class="campo"><span>Valor (R$)</span><input class="entrada" name="valor" inputmode="decimal" placeholder="0,00" required></label>
+    </div>
+    <label class="campo"><span>Motivo</span>
+      <select class="entrada" name="motivo">{% for m in motivos if m != 'Importado da planilha' %}<option>{{ m }}</option>{% endfor %}</select>
+    </label>
+    <label class="campo"><span>Observação</span><textarea class="entrada" name="observacao" rows="2" placeholder="Ex.: chaves conferidas no lote de XML"></textarea></label>
+    <span class="muted small">Use sinal negativo para reduzir (ex.: -3). O ajuste soma ao número do relatório; o original não muda.</span>
+    <div class="rodape">
+      <button class="btn" value="cancelar" formnovalidate>Fechar</button>
+      <button class="btn primario" value="salvar" id="btn-salvar-ajuste">Salvar ajuste</button>
+    </div>
+  </form>
+</dialog>
+
+<script type="application/json" id="dados-ajustes">
+{{ linhas_ajustes|default({}, true)|tojson }}
+</script>
+{% endif %}
+{% endblock %}
+{% block scripts %}{% if empresa %}<script src="{{ url_for('faturamento.static', filename='js/lancamento.js') }}"></script>{% endif %}{% endblock %}

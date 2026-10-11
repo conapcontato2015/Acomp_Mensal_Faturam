@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Faturamento{% endblock %} · CONAP</title>
+  <link rel="icon" href="{{ url_for('faturamento.static', filename='img/logo-conap-cor.png') }}">
+  <link rel="stylesheet" href="{{ url_for('faturamento.static', filename='css/app.css') }}">
+</head>
+<body data-api="{{ url_for('faturamento_api.indice') }}">
+{% set pagina = request.endpoint %}
+<div class="layout">
+  <aside class="side">
+    <div class="marca">
+      <img src="{{ url_for('faturamento.static', filename='img/logo-conap-branco.png') }}" alt="CONAP">
+      <span>FATURAMENTO</span>
+    </div>
+    <nav class="nav" aria-label="Menu principal">
+      <a href="{{ url_for('faturamento.painel') }}" class="{{ 'on' if pagina == 'faturamento.painel' }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Painel do mês</a>
+      <a href="{{ url_for('faturamento.lancamento') }}" class="{{ 'on' if pagina == 'faturamento.lancamento' }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16v4z"/><path d="M13 7l4 4"/></svg>Lançamento</a>
+      <a href="{{ url_for('faturamento.conferencia') }}" class="{{ 'on' if pagina == 'faturamento.conferencia' }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/><path d="M17 17l2 2 3-4"/></svg>Conferência</a>
+      <a href="{{ url_for('faturamento.empresas') }}" class="{{ 'on' if pagina in ('faturamento.empresas', 'faturamento.empresa_form', 'faturamento.importar_responsaveis') }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 21V7l8-4 8 4v14"/><path d="M9 21v-6h6v6"/></svg>Empresas</a>
+      <a href="{{ url_for('faturamento.importacao') }}" class="{{ 'on' if pagina and pagina.startswith('faturamento.importacao') }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 21h16"/></svg>Importar planilha</a>
+      <a href="{{ url_for('faturamento.historico') }}" class="{{ 'on' if pagina == 'faturamento.historico' }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Histórico</a>
+    </nav>
+    {% if usuario_atual %}
+    <div class="usuario">
+      <span class="avatar">{{ iniciais(usuario_atual.nome) }}</span>
+      <div style="display:flex;flex-direction:column">
+        <strong style="font-size:14px">{{ usuario_atual.nome }}</strong>
+        {% if modo_local %}<a href="{{ url_for('faturamento.sair_view') }}">Trocar usuário</a>{% endif %}
+      </div>
+    </div>
+    {% endif %}
+    <span class="versao">v{{ versao_faturamento }}</span>
+  </aside>
+
+  <main class="conteudo">
+    {% with mensagens = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in mensagens %}
+        <div class="aviso {{ 'erro' if cat == 'erro' else ('sucesso' if cat == 'sucesso' else 'info') }}" role="status">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block conteudo %}{% endblock %}
+  </main>
+</div>
+<div id="toast" class="toast" hidden role="status" aria-live="polite"></div>
+<script src="{{ url_for('faturamento.static', filename='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
