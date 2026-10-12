@@ -8,7 +8,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from urllib.parse import urlsplit
 
-from flask import abort, flash, redirect, render_template, request, session, url_for
+from flask import abort, current_app, flash, redirect, render_template, request, session, url_for
 
 from .. import bp
 from ..extensions import db
@@ -230,6 +230,7 @@ def empresas():
         "faturamento/empresas.html", empresas=lista, usuarios=svc_emp.usuarios_ativos(),
         carteira=carteira, incl=incl, busca=request.args.get("busca", ""),
         responsavel_atual=svc_emp.responsavel_atual, provedor=provedor_configurado().nome,
+        controle_fiscal=bool(current_app.config.get("FOLHA_DATABASE_URL")),
         inicio_padrao=competencia_padrao(), competencias=_competencias_para_seletor(competencia_padrao()),
     )
 

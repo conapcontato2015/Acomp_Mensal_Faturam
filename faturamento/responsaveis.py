@@ -18,6 +18,10 @@ from datetime import date
 from flask import current_app
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError, SQLAlchemyError
+from sqlalchemy.pool import NullPool
 
 from .extensions import db
 from .models import ORIGEM_INTEGRACAO, ORIGEM_PLANILHA, Usuario
@@ -32,6 +36,9 @@ class Atribuicao:
     empresa: str | None = None
     inicio: date | None = None
     linha: int | None = None
+    # Dados extras que alguns provedores trazem (ex.: Controle Fiscal)
+    codigo: str | None = None
+    ativo: bool | None = None
 
 
 @dataclass
@@ -154,8 +161,103 @@ class ProvedorApi(ProvedorResponsaveis):
         )
 
 
+def ler_mapa_responsaveis(texto: str | None) -> dict[str, str]:
+    """'NomeLa=NomeAqui;Outro=Natan' -> {'NOMELA': 'NomeAqui', 'OUTRO': 'Natan'} (chave normalizada)."""
+    mapa = {}
+    for par in (texto or "").replace("\n", ";").split(";"):
+        la, sep, aqui = par.partition("=")
+        if sep and la.strip() and aqui.strip():
+            mapa[normalizar_nome(la)] = aqui.strip()
+    return mapa
+
+
+class ProvedorControleFiscal(ProvedorResponsaveis):
+    """Lê empresas e responsáveis direto do banco do sistema Controle Fiscal — SOMENTE LEITURA.
+
+    Os dois sistemas rodam no mesmo PC: o Faturamento abre uma conexão própria ao PostgreSQL do
+    Controle Fiscal (FOLHA_DATABASE_URL), com a sessão travada em modo só leitura, e faz apenas
+    SELECT. Nomes de responsável diferentes entre os sistemas são traduzidos por
+    FOLHA_MAPA_RESPONSAVEIS ("NomeLa=NomeAqui;...").
+    """
+
+    nome = "controle_fiscal"
+    rotulo = "Controle Fiscal"
+    TIMEOUT_CONEXAO = 5  # segundos
+
+    CONSULTA = text(
+        "SELECT e.codigo, e.razao_social, e.cnpj, e.ativo, r.nome AS responsavel "
+        "FROM empresa e LEFT JOIN responsavel r ON r.id = e.responsavel_id "
+        "ORDER BY e.razao_social"
+    )
+
+    def __init__(self, url: str, mapa: dict[str, str] | str | None = None):
+        self.url = (url or "").strip()
+        self.mapa = ler_mapa_responsaveis(mapa) if isinstance(mapa, str) or mapa is None else mapa
+
+    @classmethod
+    def do_config(cls) -> "ProvedorControleFiscal | None":
+        url = current_app.config.get("FOLHA_DATABASE_URL", "")
+        if not url:
+            return None
+        return cls(url, current_app.config.get("FOLHA_MAPA_RESPONSAVEIS", ""))
+
+    def _engine(self):
+        url = make_url(self.url)
+        opcoes: dict = {"poolclass": NullPool}
+        if url.get_backend_name() == "postgresql":
+            # A sessão inteira nasce só leitura (equivale a SET SESSION CHARACTERISTICS AS TRANSACTION
+            # READ ONLY): qualquer INSERT/UPDATE/DELETE seria recusado pelo próprio PostgreSQL.
+            opcoes["connect_args"] = {"connect_timeout": self.TIMEOUT_CONEXAO,
+                                      "options": "-c default_transaction_read_only=on"}
+        elif url.get_backend_name() == "sqlite" and url.database and url.database != ":memory:":
+            # Usado nos testes: abre o arquivo em modo só leitura.
+            url = url.set(database=f"file:{url.database}", query={"mode": "ro", "uri": "true"})
+        return create_engine(url, **opcoes)
+
+    def _mapear(self, nome: str | None) -> str:
+        nome = (nome or "").strip()
+        return self.mapa.get(normalizar_nome(nome), nome) if nome else ""
+
+    def buscar(self) -> list[Atribuicao]:
+        try:
+            engine = self._engine()
+        except (ArgumentError, ValueError) as exc:
+            raise ValorInvalido(
+                "Não foi possível conectar ao banco do Controle Fiscal: endereço inválido. "
+                "Verifique se o PostgreSQL dele está ligado e o FOLHA_DATABASE_URL no .env.") from exc
+        except ImportError as exc:
+            raise ValorInvalido(
+                f"Não foi possível conectar ao banco do Controle Fiscal: driver ausente ({exc}). "
+                "Rode: pip install -r requirements.txt") from exc
+        try:
+            with engine.connect() as conn:
+                linhas = conn.execute(self.CONSULTA).mappings().all()
+                conn.rollback()
+        except (SQLAlchemyError, ImportError) as exc:
+            detalhe = str(getattr(exc, "orig", None) or exc).strip().splitlines()
+            raise ValorInvalido(
+                f"Não foi possível conectar ao banco do Controle Fiscal: {detalhe[0] if detalhe else exc.__class__.__name__}. "
+                "Verifique se o PostgreSQL dele está ligado e o FOLHA_DATABASE_URL no .env.") from exc
+        finally:
+            engine.dispose()
+        saida = []
+        for ln in linhas:
+            ativo = ln["ativo"]
+            saida.append(Atribuicao(
+                responsavel=self._mapear(ln["responsavel"]),
+                cnpj=so_digitos(ln["cnpj"]) or None,
+                empresa=(ln["razao_social"] or "").strip() or None,
+                codigo=str(ln["codigo"]).strip() if ln["codigo"] is not None else None,
+                ativo=None if ativo is None else bool(ativo),
+            ))
+        return saida
+
+
 def provedor_configurado() -> ProvedorResponsaveis:
     tipo = current_app.config.get("RESPONSAVEIS_PROVEDOR", "manual")
+    if tipo == "controle_fiscal":
+        return ProvedorControleFiscal(current_app.config.get("FOLHA_DATABASE_URL", ""),
+                                      current_app.config.get("FOLHA_MAPA_RESPONSAVEIS", ""))
     if tipo == "api":
         return ProvedorApi(current_app.config.get("RESPONSAVEIS_API_URL", ""),
                            current_app.config.get("RESPONSAVEIS_API_TOKEN", ""))
@@ -181,6 +283,8 @@ def sincronizar(provedor: ProvedorResponsaveis, registrado_por: Usuario | None,
         rel.erros.append(str(exc))
         return rel
     for a in atribs:
+        if not (a.responsavel or "").strip():
+            continue  # fonte sem responsável para esta empresa: nada a aplicar
         empresa = buscar_por_cnpj(a.cnpj) if a.cnpj else None
         if empresa is None and a.empresa:
             empresa = buscar_por_nome(a.empresa)

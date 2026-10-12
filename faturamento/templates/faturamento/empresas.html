@@ -16,12 +16,26 @@
   </div>
 </header>
 
-<div class="aviso info" role="status">
+{% set rotulo_provedor = {'api': 'API externa', 'controle_fiscal': 'Controle Fiscal'} %}
+<div class="aviso info" role="status" id="banner-integracao">
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
-  {% if provedor == 'manual' %}
-  <span><strong>Integração de responsáveis: não configurada.</strong> Enquanto isso, qualquer usuário troca o responsável aqui ou importa uma planilha (CNPJ + responsável). Quando o sistema externo for ligado, a coluna Origem mostra "Integração".</span>
+  <div style="display:flex;flex-direction:column;gap:6px;flex:1">
+  {% if controle_fiscal %}
+    <span><strong>Controle Fiscal: configurado.</strong> Responsáveis, CNPJ e código das empresas podem ser trazidos do Controle Fiscal
+    (o banco dele é só lido — nada é alterado lá). Você vê uma prévia antes de aplicar.</span>
   {% else %}
-  <span><strong>Integração de responsáveis: {{ provedor }}.</strong> Os responsáveis vêm do sistema externo; trocas feitas aqui ficam registradas como "Manual" no histórico.</span>
+    <span><strong>Controle Fiscal: não configurado.</strong> Para trazer responsáveis e CNPJs do sistema Controle Fiscal (mesmo PC),
+    coloque no arquivo <code>.env</code> a linha <code>FOLHA_DATABASE_URL=postgresql://usuario:senha@localhost:5432/controle_fiscal</code>
+    e reinicie o Faturamento.</span>
+  {% endif %}
+  {% if provedor == 'manual' %}
+    <span class="small">Integração de responsáveis: não configurada. Enquanto isso, qualquer usuário troca o responsável aqui ou importa uma planilha (CNPJ + responsável). Trocas vindas de integração aparecem como "Integração" na coluna Origem.</span>
+  {% else %}
+    <span class="small"><strong>Integração de responsáveis: {{ provedor }}</strong> ({{ rotulo_provedor.get(provedor, provedor) }}). Os responsáveis vêm do sistema externo; trocas feitas aqui ficam registradas como "Manual" no histórico.</span>
+  {% endif %}
+  </div>
+  {% if controle_fiscal %}
+  <a class="btn primario pequeno" href="{{ url_for('faturamento.controle_fiscal') }}" style="flex-shrink:0">Sincronizar com o Controle Fiscal</a>
   {% endif %}
 </div>
 

@@ -12,15 +12,20 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 
-def _database_url(dados_dir: Path) -> str:
-    url = os.getenv("DATABASE_URL", "").strip()
-    if not url:
-        return f"sqlite:///{(dados_dir / 'faturamento.db').as_posix()}"
-    # Provedores costumam entregar "postgres://"; o SQLAlchemy 2 quer o driver explícito.
+def _normalizar_url(url: str) -> str:
+    """Provedores costumam entregar "postgres://"; o SQLAlchemy 2 quer o driver explícito."""
+    url = (url or "").strip()
     if url.startswith("postgres://"):
         url = "postgresql+psycopg://" + url[len("postgres://"):]
     elif url.startswith("postgresql://"):
         url = "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
+
+
+def _database_url(dados_dir: Path) -> str:
+    url = _normalizar_url(os.getenv("DATABASE_URL", ""))
+    if not url:
+        return f"sqlite:///{(dados_dir / 'faturamento.db').as_posix()}"
     return url
 
 
@@ -40,10 +45,16 @@ class Config:
     BACKUP_DIAS = int(os.getenv("BACKUP_DIAS", "30"))
     LIMITE_VARIACAO = float(os.getenv("LIMITE_VARIACAO", "0.5"))
 
-    # De onde vêm os responsáveis: manual (padrão), planilha, api
+    # De onde vêm os responsáveis: manual (padrão), api, controle_fiscal
     RESPONSAVEIS_PROVEDOR = os.getenv("RESPONSAVEIS_PROVEDOR", "manual")
     RESPONSAVEIS_API_URL = os.getenv("RESPONSAVEIS_API_URL", "")
     RESPONSAVEIS_API_TOKEN = os.getenv("RESPONSAVEIS_API_TOKEN", "")
+
+    # Controle Fiscal (outro sistema da CONAP, no mesmo PC): lido direto do PostgreSQL dele, SÓ LEITURA.
+    # Vazio = integração desligada. Ex.: postgresql://usuario:senha@localhost:5432/controle_fiscal
+    FOLHA_DATABASE_URL = _normalizar_url(os.getenv("FOLHA_DATABASE_URL", ""))
+    # Nomes de responsável que diferem entre os sistemas: "NomeLa=NomeAqui;Outro=Natan"
+    FOLHA_MAPA_RESPONSAVEIS = os.getenv("FOLHA_MAPA_RESPONSAVEIS", "")
 
     HOST = os.getenv("HOST", "127.0.0.1")
     PORT = int(os.getenv("PORT", "5000"))
@@ -60,3 +71,5 @@ class TestConfig(Config):
     SECRET_KEY = "teste"
     BACKUP_DIAS = 0
     DADOS_DIR = Path(os.getenv("TEST_DADOS_DIR", "/tmp/faturamento-testes"))
+    FOLHA_DATABASE_URL = ""
+    FOLHA_MAPA_RESPONSAVEIS = ""

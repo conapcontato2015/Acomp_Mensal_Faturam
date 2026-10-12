@@ -5,3 +5,5 @@ Flask-Migrate>=4.0,<5
 openpyxl>=3.1,<4
 waitress>=3.0,<4
 python-dotenv>=1.0,<2
+# Leitura do banco PostgreSQL do Controle Fiscal (FOLHA_DATABASE_URL) e servidor
+psycopg[binary]>=3.1,<4

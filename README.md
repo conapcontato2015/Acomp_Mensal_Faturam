@@ -44,6 +44,29 @@ Hoje a carteira é editada à mão ou por planilha (Empresas › Importar respon
 preenchido). O encaixe do sistema externo está pronto em `faturamento/responsaveis.py`
 (`ProvedorApi.buscar`): basta implementar a leitura e configurar `RESPONSAVEIS_PROVEDOR=api` no `.env`.
 
+### Controle Fiscal (mesmo PC)
+
+O Faturamento lê **direto do PostgreSQL do Controle Fiscal, só leitura** (sessão em modo somente leitura,
+apenas `SELECT`; nada é gravado lá). No `.env` do Faturamento:
+
+```
+FOLHA_DATABASE_URL=postgresql://usuario:senha@localhost:5432/controle_fiscal
+# opcional, quando o nome do responsável difere entre os sistemas (NomeLá=NomeAqui;...)
+FOLHA_MAPA_RESPONSAVEIS=Natan Lima=Natan;Jaisa Souza=Jaísa
+```
+
+Com isso, Empresas mostra **Sincronizar com o Controle Fiscal**: escolhe-se a competência a partir da qual as
+trocas valem, vê-se a prévia e aplica-se. Regras (`faturamento/services/controle_fiscal.py`):
+
+- Casa as empresas pelo CNPJ; depois pelo código já vinculado (`external_id = cf:<código>`); por último pelo
+  nome — essas aparecem como "casada pelo nome — confira".
+- Responsável: troca a partir da competência escolhida, origem "Integração" (sem mudança se já for a mesma pessoa).
+  Empresa sem responsável lá e nome sem correspondência aqui só são listados.
+- CNPJ é preenchido só quando está vazio aqui (CNPJ diferente é listado, nunca sobrescrito); o código vira
+  `external_id = cf:<código>`. Ativa/inativa diferente só é listada; "sem movimento" não é importado.
+- Empresas que só existem no Controle Fiscal são contadas, não criadas. Tudo fica no Histórico ("Controle Fiscal").
+- `RESPONSAVEIS_PROVEDOR=controle_fiscal` faz dele o provedor de responsáveis do sistema.
+
 ## Subir num servidor / na plataforma do escritório
 
 - **Banco**: `DATABASE_URL=postgresql://...` (instale `requirements-servidor.txt`). As migrações rodam sozinhas.

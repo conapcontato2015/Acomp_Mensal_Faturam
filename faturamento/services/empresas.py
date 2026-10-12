@@ -114,12 +114,12 @@ def atualizar_empresa(empresa: Empresa, usuario: Usuario | None, *, nome: str | 
 
 
 def definir_responsavel(empresa: Empresa, novo: Usuario, inicio: date, registrado_por: Usuario | None,
-                        origem: str = ORIGEM_MANUAL) -> bool:
+                        origem: str = ORIGEM_MANUAL, fonte: str | None = None) -> bool:
     """Troca a carteira a partir de ``inicio`` (vale dali em diante). Retorna False se nada mudou.
 
     Qualquer usuário pode trocar (decisão de 11/10/2026). A troca fica no histórico. Vínculos com
     início posterior a ``inicio`` são removidos (ficam registrados no "antes" da auditoria), para que
-    o novo responsável passe a ser o atual.
+    o novo responsável passe a ser o atual. ``fonte`` (ex.: "Controle Fiscal") vai na descrição da auditoria.
     """
     vigente = empresa.responsavel_em(inicio)
     posteriores = [v for v in empresa.historico_responsaveis if v.inicio > inicio]
@@ -147,7 +147,7 @@ def definir_responsavel(empresa: Empresa, novo: Usuario, inicio: date, registrad
     auditoria.registrar(
         "fat_empresa_responsavel", "trocar_responsavel", registrado_por, empresa_id=empresa.id,
         antes=antes, depois={"responsavel": novo.nome, "inicio": inicio, "origem": origem},
-        descricao=f"Responsável de {empresa.nome}: {anterior_nome or '—'} → {novo.nome} a partir de {inicio:%m/%Y} ({origem})",
+        descricao=f"Responsável de {empresa.nome}: {anterior_nome or '—'} → {novo.nome} a partir de {inicio:%m/%Y} ({origem}{', ' + fonte if fonte else ''})",
     )
     db.session.flush()
     db.session.expire(empresa, ["historico_responsaveis"])
