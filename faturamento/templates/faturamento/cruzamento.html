@@ -1,0 +1,173 @@
+{% extends "faturamento/base.html" %}
+{% from "faturamento/_filtros.html" import seletor_competencia, seletor_carteira %}
+{% block titulo %}Importar do cruzamento{% endblock %}
+
+{% macro nums(n) %}
+  {% if n is none %}<span class="muted">—</span>
+  {% else %}
+    <div style="font-variant-numeric:tabular-nums"><strong>{{ n.qtde_autor|inteiro }}</strong> · R$ {{ n.valor_autor|moeda }}</div>
+    {% if n.qtde_canc or n.valor_canc %}<div class="muted small" style="font-variant-numeric:tabular-nums">canc. {{ n.qtde_canc|inteiro }} · R$ {{ n.valor_canc|moeda }}</div>{% endif %}
+    {% if n.aj_qtde %}<div class="small" style="color:var(--laranja-texto);font-variant-numeric:tabular-nums">ajuste +{{ n.aj_qtde|inteiro }} · R$ {{ n.aj_valor|moeda }}</div>{% endif %}
+  {% endif %}
+{% endmacro %}
+
+{% block conteudo %}
+<header class="cabecalho">
+  <div class="titulo">
+    <span class="muted"><a href="{{ url_for('faturamento.importacao') }}">Importar planilha</a> /</span>
+    <h1>Importar do cruzamento Domínio × SEFAZ</h1>
+  </div>
+</header>
+
+{% if not configurado %}
+<div class="aviso erro" role="alert">
+  <div>
+    <strong>Cruzamento: não configurado.</strong>
+    No Manus, cadastre o segredo <code>FATURAMENTO_API_KEY</code> (um texto longo e aleatório) e publique o cruzamento.
+    Depois coloque no arquivo <code>.env</code> do Faturamento:
+    <ul>
+      <li><code>CRUZAMENTO_URL=https://endereço-do-cruzamento</code></li>
+      <li><code>CRUZAMENTO_API_KEY=</code> a mesma chave cadastrada no Manus</li>
+    </ul>
+    e reinicie o Faturamento.
+  </div>
+</div>
+{% else %}
+
+<div class="aviso info" role="note">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+  <span>O cruzamento é <strong>só lido</strong>. Vêm de lá NF-e Entradas, NF-e Saídas e NFC-e (autorizadas e canceladas, pela data de
+  emissão) e o <strong>ajuste sugerido</strong>: notas que estão no Domínio e não no relatório da SEFAZ. CT-e e NFS-e continuam
+  manuais. A <strong>versão anterior</strong> é o que veio do cruzamento na última importação; cada importação fica guardada e pode
+  ser desfeita em Importar planilha. Linhas “Bateu” nunca são alteradas.</span>
+</div>
+
+<section class="cartao pad">
+  <form method="get" action="{{ url_for('faturamento.cruzamento') }}" class="filtros">
+    <input type="hidden" name="ver" value="1">
+    {{ seletor_competencia(comp, competencias) }}
+    {% if empresa %}
+      <input type="hidden" name="empresa" value="{{ empresa.id }}">
+      <label class="campo"><span>Empresa</span><span class="entrada" style="display:flex;align-items:center">{{ empresa.nome }}</span></label>
+      <a class="btn" href="{{ url_for('faturamento.cruzamento', competencia=comp|comp_iso) }}">Todas da carteira</a>
+    {% else %}
+      {{ seletor_carteira(usuarios, carteira) }}
+    {% endif %}
+    <button class="btn primario" type="submit">{{ 'Buscar de novo' if previa else 'Buscar no cruzamento' }}</button>
+  </form>
+</section>
+
+{% if previa %}
+<form method="post" action="{{ url_for('faturamento.cruzamento_aplicar') }}" style="display:flex;flex-direction:column;gap:16px" aria-label="Prévia da importação">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="token" value="{{ token }}">
+  <input type="hidden" name="competencia" value="{{ comp|comp_iso }}">
+  <input type="hidden" name="carteira" value="{{ carteira }}">
+
+  <section class="grade-kpi" aria-label="Resumo da prévia">
+    <div class="kpi destaque"><span class="rotulo">A importar</span><span class="valor">{{ previa.a_importar }}</span></div>
+    <div class="kpi {{ 'alerta' if previa.mudaram_la }}"><span class="rotulo">Mudaram lá desde a última importação</span><span class="valor">{{ previa.mudaram_la }}</span></div>
+    <div class="kpi"><span class="rotulo">Iguais ao lançado aqui</span><span class="valor">{{ previa.contar(svc.SIT_IGUAL) }}</span></div>
+    <div class="kpi"><span class="rotulo">Sem relatório SEFAZ lá</span><span class="valor">{{ previa.contar(svc.SIT_SEM_DADOS) }}</span></div>
+  </section>
+
+  {% if previa.mudaram_la_batidas %}
+  <div class="aviso erro" role="status">
+    <strong>{{ previa.mudaram_la_batidas }} linha(s) já marcada(s) como “Bateu” mudaram no cruzamento depois da última importação.</strong>&nbsp;Elas não serão alteradas; confira se a mudança lá foi intencional.
+  </div>
+  {% endif %}
+
+  <span class="muted small">Lido do cruzamento em {{ previa.obtido_em[:16]|replace('T', ' ') }} (UTC) · nada foi gravado ainda.</span>
+
+  {% for ep in previa.empresas %}
+  <section class="cartao" aria-label="{{ ep.empresa.nome }}">
+    <div style="padding:12px 16px;border-bottom:1px solid var(--borda);display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center">
+      <div>
+        <strong>{{ ep.empresa.nome }}</strong>
+        <span class="muted small">· {{ ep.empresa.cnpj_formatado }} · {{ ep.responsavel.nome if ep.responsavel else 'sem responsável' }}</span>
+      </div>
+      <div style="display:flex;gap:6px">
+        {% if ep.mudou_la %}<span class="pilula pendente">Mudou lá</span>{% endif %}
+        {% if not ep.pode_editar %}<span class="pilula sem_movimento">Carteira de {{ ep.responsavel.nome if ep.responsavel else 'outra pessoa' }}</span>{% endif %}
+      </div>
+    </div>
+    {% if ep.linhas %}
+    <div class="rolagem">
+      <table class="tabela">
+        <thead><tr>
+          <th><span class="sr-only">Importar</span></th><th>Tipo</th><th>Versão anterior</th><th>Nova versão (lá)</th><th>Atual aqui</th><th>Situação</th>
+        </tr></thead>
+        <tbody>
+        {% for l in ep.linhas %}
+          <tr>
+            <td style="width:36px">
+              <input type="checkbox" name="linha" value="{{ l.chave }}" style="width:18px;height:18px;accent-color:var(--marinho)"
+                     aria-label="Importar {{ ep.empresa.nome }} · {{ l.tipo.nome }}"
+                     {{ 'checked' if l.marcada and ep.pode_editar }} {{ 'disabled' if not l.selecionavel }}>
+            </td>
+            <td class="nome">{{ l.tipo.nome }}</td>
+            <td>{{ nums(l.anterior) }}</td>
+            <td>
+              {{ nums(l.nova) }}
+              {% if l.notas %}
+              <details class="small" style="margin-top:4px">
+                <summary style="cursor:pointer">{{ l.notas|length + l.notas_omitidas }} nota(s) só no Domínio</summary>
+                <div style="white-space:normal;max-width:420px">{% for n in l.notas %}{{ n.numero }}{% if n.serie %}/{{ n.serie }}{% endif %} ({{ n.data }}, R$ {{ n.valor|moeda }}){{ ', ' if not loop.last }}{% endfor %}{% if l.notas_omitidas %} … e mais {{ l.notas_omitidas }}{% endif %}</div>
+              </details>
+              {% elif l.nova is not none and l.nova.aj_qtde is none %}
+              <div class="muted small">Domínio do mês não importado lá: sem ajuste sugerido</div>
+              {% endif %}
+            </td>
+            <td>{{ nums(l.atual) }}{% if l.bateu %}<span class="pilula ok" style="margin-top:4px">Bateu</span>{% endif %}</td>
+            <td style="white-space:normal;min-width:180px">
+              {% if l.situacao == svc.SIT_MUDOU_LA or (l.mudou_la and l.bateu) %}{% set cls = 'pendente' %}
+              {% elif l.situacao == svc.SIT_IGUAL %}{% set cls = 'preenchido' %}
+              {% else %}{% set cls = 'sem_movimento' %}{% endif %}
+              <span class="pilula {{ cls }}" style="white-space:normal">{{ l.texto }}</span>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <div class="vazio" style="padding:16px">Nenhum dos tipos desta empresa vem do cruzamento.</div>
+    {% endif %}
+  </section>
+  {% else %}
+  <div class="cartao vazio">Nenhuma empresa {{ 'desta carteira ' if not empresa }}foi encontrada no cruzamento pelo CNPJ.</div>
+  {% endfor %}
+
+  {% if previa.empresas %}
+  <section class="cartao pad" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between">
+    <label style="display:flex;gap:8px;align-items:center">
+      <input type="checkbox" name="substituto" value="1" style="width:18px;height:18px">
+      Importar como substituto (inclui linhas marcadas de carteiras de outras pessoas)
+    </label>
+    <div style="display:flex;gap:8px">
+      <button class="btn" type="submit" name="acao" value="cancelar" formnovalidate>Cancelar</button>
+      <button class="btn laranja" type="submit" name="acao" value="aplicar">Importar linhas marcadas</button>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if previa.so_la or previa.fora_do_cruzamento or previa.sem_cnpj_aqui %}
+  <section class="cartao pad small" style="display:flex;flex-direction:column;gap:10px" aria-label="Empresas sem correspondência">
+    {% if previa.fora_do_cruzamento %}
+    <details><summary style="cursor:pointer"><strong>{{ previa.fora_do_cruzamento|length }}</strong> empresa(s) daqui não estão no cruzamento (pelo CNPJ)</summary>
+      <ul>{% for e in previa.fora_do_cruzamento %}<li>{{ e.nome }} · {{ e.cnpj_formatado }}</li>{% endfor %}</ul></details>
+    {% endif %}
+    {% if previa.sem_cnpj_aqui %}
+    <details><summary style="cursor:pointer"><strong>{{ previa.sem_cnpj_aqui|length }}</strong> empresa(s) daqui sem CNPJ cadastrado (cadastre em Empresas para casar)</summary>
+      <ul>{% for e in previa.sem_cnpj_aqui %}<li>{{ e.nome }}</li>{% endfor %}</ul></details>
+    {% endif %}
+    {% if previa.so_la %}
+    <details><summary style="cursor:pointer"><strong>{{ previa.so_la|length }}</strong> empresa(s) do cruzamento não cadastradas aqui (não são criadas)</summary>
+      <ul>{% for e in previa.so_la %}<li>{{ e.razao_social }}{% if e.nome_fantasia %} ({{ e.nome_fantasia }}){% endif %} · {{ e.cnpj }}</li>{% endfor %}</ul></details>
+    {% endif %}
+  </section>
+  {% endif %}
+</form>
+{% endif %}
+{% endif %}
+{% endblock %}

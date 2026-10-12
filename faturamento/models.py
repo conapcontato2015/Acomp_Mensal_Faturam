@@ -31,6 +31,9 @@ STATUS_SEM_MOVIMENTO = "sem_movimento"
 STATUS_PREENCHIDO = "preenchido"
 
 MOTIVO_PADRAO_AJUSTE = "Arquivos a mais, ausentes no relatório da SEFAZ"
+# Ajuste sugerido pelo cruzamento Domínio × SEFAZ (notas do Domínio que faltam no relatório).
+# Motivo próprio para reimportar sem mexer nos ajustes digitados à mão.
+MOTIVO_CRUZAMENTO = "Arquivos a mais, ausentes no relatório da SEFAZ (cruzamento)"
 MOTIVOS_AJUSTE = [
     MOTIVO_PADRAO_AJUSTE,
     "Arquivos no relatório da SEFAZ que a empresa não enviou",
@@ -146,6 +149,29 @@ class Importacao(db.Model):
 
     usuario: Mapped[Usuario | None] = relationship(foreign_keys=[usuario_id])
     responsavel: Mapped[Usuario | None] = relationship(foreign_keys=[responsavel_id])
+
+
+class FonteVersao(db.Model):
+    """Versão dos números de uma fonte externa (hoje o cruzamento Domínio × SEFAZ) para empresa + competência.
+
+    Gravada a cada importação aplicada: guarda o que veio de lá (JSON) para comparar com a próxima
+    leitura ("mudou lá desde a última importação?") sem depender do que foi digitado aqui.
+    """
+
+    __tablename__ = "fat_fonte_versao"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    empresa_id: Mapped[int] = mapped_column(ForeignKey("fat_empresa.id", ondelete="CASCADE"), index=True)
+    competencia: Mapped[date] = mapped_column(Date, index=True)
+    fonte: Mapped[str] = mapped_column(String(30))
+    obtida_em: Mapped[datetime] = mapped_column(DateTime, default=agora)
+    usuario_id: Mapped[int | None] = mapped_column(ForeignKey("fat_usuario.id"))
+    importacao_id: Mapped[int | None] = mapped_column(ForeignKey("fat_importacao.id", ondelete="SET NULL"))
+    assinatura: Mapped[str] = mapped_column(String(64))
+    dados: Mapped[str] = mapped_column(Text)  # JSON da empresa como veio da fonte
+
+    usuario: Mapped[Usuario | None] = relationship()
+    importacao: Mapped[Importacao | None] = relationship()
 
 
 class Lancamento(db.Model):
@@ -293,5 +319,5 @@ def get_or_404_none(model, pk):
 
 __all__ = [
     "Usuario", "TipoDocumento", "Empresa", "EmpresaResponsavel", "Lancamento", "Ajuste",
-    "Fechamento", "Auditoria", "Importacao", "fat_empresa_tipo", "select",
+    "Fechamento", "Auditoria", "Importacao", "FonteVersao", "fat_empresa_tipo", "select",
 ]

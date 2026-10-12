@@ -56,6 +56,12 @@ class Config:
     # Nomes de responsável que diferem entre os sistemas: "NomeLa=NomeAqui;Outro=Natan"
     FOLHA_MAPA_RESPONSAVEIS = os.getenv("FOLHA_MAPA_RESPONSAVEIS", "")
 
+    # Cruzamento Domínio × SEFAZ (online, no Manus): números do mês por empresa, SÓ LEITURA.
+    # Vazio = integração desligada. A chave é a mesma FATURAMENTO_API_KEY cadastrada no Manus.
+    CRUZAMENTO_URL = os.getenv("CRUZAMENTO_URL", "").rstrip("/")
+    CRUZAMENTO_API_KEY = os.getenv("CRUZAMENTO_API_KEY", "")
+    CRUZAMENTO_TIMEOUT = int(os.getenv("CRUZAMENTO_TIMEOUT", "90"))
+
     HOST = os.getenv("HOST", "127.0.0.1")
     PORT = int(os.getenv("PORT", "5000"))
 
@@ -73,3 +79,5 @@ class TestConfig(Config):
     DADOS_DIR = Path(os.getenv("TEST_DADOS_DIR", "/tmp/faturamento-testes"))
     FOLHA_DATABASE_URL = ""
     FOLHA_MAPA_RESPONSAVEIS = ""
+    CRUZAMENTO_URL = ""
+    CRUZAMENTO_API_KEY = ""

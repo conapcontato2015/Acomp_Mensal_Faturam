@@ -67,6 +67,32 @@ trocas valem, vê-se a prévia e aplica-se. Regras (`faturamento/services/contro
 - Empresas que só existem no Controle Fiscal são contadas, não criadas. Tudo fica no Histórico ("Controle Fiscal").
 - `RESPONSAVEIS_PROVEDOR=controle_fiscal` faz dele o provedor de responsáveis do sistema.
 
+## Números vindos do cruzamento Domínio × SEFAZ
+
+O sistema de cruzamento (online, no Manus) já tem as notas da SEFAZ e do Domínio. O Faturamento **só lê** de lá,
+por uma rota com chave, os números do mês de cada empresa:
+
+1. No Manus, cadastre o segredo `FATURAMENTO_API_KEY` (texto longo e aleatório) e publique o cruzamento.
+2. No `.env` do Faturamento:
+   ```
+   CRUZAMENTO_URL=https://endereço-do-cruzamento
+   CRUZAMENTO_API_KEY=a mesma chave cadastrada no Manus
+   ```
+3. Reinicie o Faturamento.
+
+Onde usar: **Importar planilha › Importar do cruzamento**, **Lançamento › Buscar no cruzamento** (só a empresa
+aberta) e **Painel › Verificar cruzamento**. A prévia mostra, por empresa e tipo, a **versão anterior** (o que veio
+na última importação), a **nova versão** (o que está lá agora) e o **atual aqui**; você marca as linhas e importa.
+Regras (`faturamento/services/cruzamento.py`):
+
+- Empresas casadas pelo **CNPJ** (empresa sem CNPJ aqui não casa; as que só existem lá não são criadas).
+- Vêm NF-e Entradas, NF-e Saídas e NFC-e (autorizadas e canceladas, pela data de emissão). CT-e e NFS-e continuam manuais.
+- **Ajuste sugerido** = notas que estão no Domínio e não no relatório da SEFAZ, com o motivo
+  "… (cruzamento)" e a lista das notas na observação. Reimportar troca só esse ajuste; os digitados à mão ficam.
+- Tipo sem relatório da SEFAZ importado lá para o mês não traz nada (zero lá não vira zero aqui).
+- Linha "Bateu" nunca é alterada; se mudou lá depois, a prévia avisa. Carteira de outra pessoa só "como substituto".
+- Cada importação é uma **versão** (`fat_fonte_versao`) e aparece em Importar planilha, com **Desfazer**.
+
 ## Subir num servidor / na plataforma do escritório
 
 - **Banco**: `DATABASE_URL=postgresql://...` (instale `requirements-servidor.txt`). As migrações rodam sozinhas.

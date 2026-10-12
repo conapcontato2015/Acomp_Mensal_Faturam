@@ -84,8 +84,9 @@
 {% endif %}
 
 <div class="cartao pad" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px">
-  <span class="muted">Origem dos números: <strong style="color:var(--tinta)">relatório da SEFAZ</strong>, digitação manual. Ajustes = arquivos da empresa que não constam no relatório.</span>
-  <button class="btn" type="button" disabled title="Fase futura: importar direto do sistema contábil">Importar do sistema contábil · em breve</button>
+  <span class="muted">Origem dos números: <strong style="color:var(--tinta)">relatório da SEFAZ</strong>, digitação manual ou cruzamento Domínio × SEFAZ. Ajustes = arquivos da empresa que não constam no relatório.</span>
+  <a class="btn" href="{{ url_for('faturamento.cruzamento', competencia=comp|comp_iso, empresa=empresa.id, ver=1) }}"
+     title="NF-e Entradas, NF-e Saídas, NFC-e e o ajuste sugerido, com prévia antes de gravar">Buscar no cruzamento Domínio × SEFAZ</a>
 </div>
 
 <section class="grade-kpi" aria-label="Totais do mês">

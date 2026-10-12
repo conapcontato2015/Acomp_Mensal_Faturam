@@ -1,1 +1,1 @@
-from . import conferencia, controle_fiscal, importacao, routes  # noqa: F401
+from . import conferencia, controle_fiscal, cruzamento, importacao, routes  # noqa: F401

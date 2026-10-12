@@ -11,6 +11,8 @@
     {{ seletor_competencia(comp, competencias) }}
     {{ seletor_carteira(usuarios, carteira) }}
     <input type="hidden" name="status" value="{{ filtro }}">
+    <a class="btn" href="{{ url_for('faturamento.cruzamento', competencia=comp|comp_iso, carteira=carteira, ver=1) }}"
+       title="Compara o cruzamento Domínio × SEFAZ com a última versão importada e com o lançado aqui">Verificar cruzamento</a>
   </form>
 </header>
 
