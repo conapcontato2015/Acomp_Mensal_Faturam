@@ -6,6 +6,7 @@
   <title>{% block titulo %}Faturamento{% endblock %} · CONAP</title>
   <link rel="icon" href="{{ url_for('faturamento.static', filename='img/logo-conap-cor.png') }}">
   <link rel="stylesheet" href="{{ url_for('faturamento.static', filename='css/app.css') }}">
+  {% block estilos %}{% endblock %}
 </head>
 <body data-api="{{ url_for('faturamento_api.indice') }}">
 {% set pagina = request.endpoint %}
@@ -22,7 +23,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 20h4l10-10-4-4L4 16v4z"/><path d="M13 7l4 4"/></svg>Lançamento</a>
       <a href="{{ url_for('faturamento.conferencia') }}" class="{{ 'on' if pagina == 'faturamento.conferencia' }}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/><path d="M17 17l2 2 3-4"/></svg>Conferência</a>
-      <a href="{{ url_for('faturamento.empresas') }}" class="{{ 'on' if pagina in ('faturamento.empresas', 'faturamento.empresa_form', 'faturamento.importar_responsaveis') }}">
+      <a href="{{ url_for('faturamento.empresas') }}" class="{{ 'on' if pagina in ('faturamento.empresas', 'faturamento.empresa_form', 'faturamento.importar_responsaveis', 'faturamento.importar_responsaveis_confirmar') }}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 21V7l8-4 8 4v14"/><path d="M9 21v-6h6v6"/></svg>Empresas</a>
       <a href="{{ url_for('faturamento.importacao') }}" class="{{ 'on' if pagina and pagina.startswith('faturamento.importacao') }}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 21h16"/></svg>Importar planilha</a>

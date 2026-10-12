@@ -56,3 +56,4 @@ class TestConfig(Config):
     SQLALCHEMY_DATABASE_URI = "sqlite://"
     SECRET_KEY = "teste"
     BACKUP_DIAS = 0
+    DADOS_DIR = Path(os.getenv("TEST_DADOS_DIR", "/tmp/faturamento-testes"))

@@ -1,0 +1,130 @@
+{% extends "faturamento/base.html" %}
+{% from "faturamento/_filtros.html" import seletor_carteira %}
+{% block titulo %}Empresas{% endblock %}
+{% block conteudo %}
+{% set rotulo_origem = {'manual': 'Manual', 'planilha': 'Planilha', 'integracao': 'Integração'} %}
+{% set classe_origem = {'manual': 'sem_movimento', 'planilha': 'preenchido', 'integracao': 'ok'} %}
+<header class="cabecalho">
+  <div class="titulo">
+    <h1>Empresas</h1>
+    <span class="muted">Responsável da carteira e tipos de documento que cada empresa usa. Só esses tipos aparecem no lançamento.</span>
+  </div>
+  <div class="acoes">
+    <a class="btn" href="{{ url_for('faturamento.importar_responsaveis') }}">Importar responsáveis (planilha)</a>
+    <a class="btn" href="{{ url_for('faturamento.importacao') }}">Importar planilha antiga</a>
+    <a class="btn primario" href="{{ url_for('faturamento.empresa_form') }}">Nova empresa</a>
+  </div>
+</header>
+
+<div class="aviso info" role="status">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+  {% if provedor == 'manual' %}
+  <span><strong>Integração de responsáveis: não configurada.</strong> Enquanto isso, qualquer usuário troca o responsável aqui ou importa uma planilha (CNPJ + responsável). Quando o sistema externo for ligado, a coluna Origem mostra "Integração".</span>
+  {% else %}
+  <span><strong>Integração de responsáveis: {{ provedor }}.</strong> Os responsáveis vêm do sistema externo; trocas feitas aqui ficam registradas como "Manual" no histórico.</span>
+  {% endif %}
+</div>
+
+<div class="filtros" style="justify-content:space-between">
+<form class="filtros" method="get" data-navegar id="form-filtros">
+  {{ seletor_carteira(usuarios, carteira, 'Responsável') }}
+  <label class="campo"><span>Buscar</span>
+    <input class="entrada" type="search" name="busca" value="{{ busca }}" placeholder="Nome ou CNPJ" style="min-width:240px">
+  </label>
+  <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer;min-height:40px">
+    <input type="checkbox" name="inativas" value="1" id="chk-inativas" {{ 'checked' if incl }} style="width:18px;height:18px;accent-color:var(--laranja)">
+    Mostrar inativas
+  </label>
+  <input type="hidden" name="inativas" value="0">
+  <button class="btn" type="submit">Filtrar</button>
+</form>
+  <label class="campo"><span>Trocas valem a partir de</span>
+    <select class="entrada" id="inicio-troca" aria-describedby="nota-inicio">
+      {% for c in competencias %}<option value="{{ c|comp_iso }}" {{ 'selected' if c == inicio_padrao }}>{{ c|comp_curta }}</option>{% endfor %}
+    </select>
+  </label>
+</div>
+<span class="muted small" id="nota-inicio">Ao trocar o responsável na tabela, a troca vale a partir da competência escolhida acima. Meses anteriores continuam com quem cuidava na época.</span>
+
+<section class="cartao">
+  {% if empresas %}
+  <div style="padding:12px 16px;border-bottom:1px solid var(--borda)" class="muted small">
+    {{ empresas|selectattr('ativa')|list|length }} ativa(s) de {{ empresas|length }} listada(s)
+  </div>
+  <div class="rolagem">
+    <table class="tabela" aria-label="Empresas">
+      <thead><tr>
+        <th>Empresa</th><th>CNPJ</th><th>Responsável</th><th>Origem</th><th>Tipos usados</th><th>Ativa</th>
+        <th><span class="sr-only">Ações</span></th>
+      </tr></thead>
+      <tbody>
+      {% for e in empresas %}
+        {% set resp = responsavel_atual(e) %}
+        {% set origem = e.historico_responsaveis[0].origem if e.historico_responsaveis else none %}
+        <tr {% if not e.ativa %}style="opacity:.55"{% endif %}>
+          <td class="nome">{{ e.nome }}</td>
+          <td class="num">{% if e.cnpj %}{{ e.cnpj_formatado }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>
+            <select class="entrada sel-resp" data-empresa="{{ e.id }}" data-anterior="{{ resp.id if resp else '' }}" aria-label="Responsável de {{ e.nome }}">
+              {% if not resp %}<option value="" selected disabled>—</option>{% endif %}
+              {% for u in usuarios %}<option value="{{ u.id }}" {{ 'selected' if resp and resp.id == u.id }}>{{ u.nome }}</option>{% endfor %}
+            </select>
+          </td>
+          <td>{% if origem %}<span class="pilula {{ classe_origem.get(origem, 'sem_movimento') }}" data-origem>{{ rotulo_origem.get(origem, origem) }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td style="white-space:normal">
+            {% for t in e.tipos %}<span class="tag {{ t.sentido }}">{{ t.nome }}</span>{% endfor %}
+            {% if not e.tipos %}<span style="color:var(--laranja-escuro);font-weight:500">Nenhum tipo definido</span>{% endif %}
+          </td>
+          <td>{% if e.ativa %}<span class="pilula preenchido">Sim</span>{% else %}<span class="pilula sem_movimento">Não</span>{% endif %}</td>
+          <td style="text-align:right"><a href="{{ url_for('faturamento.empresa_form', eid=e.id) }}" aria-label="Editar {{ e.nome }}">Editar</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <div class="vazio">Nenhuma empresa encontrada{{ ' com esses filtros' if busca or carteira != 'todos' }}. <a href="{{ url_for('faturamento.empresa_form') }}">Cadastre uma empresa</a> ou <a href="{{ url_for('faturamento.importacao') }}">importe a planilha</a>.</div>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  // "Mostrar inativas" recarrega a lista na hora
+  const chk = document.getElementById('chk-inativas');
+  if (chk) chk.addEventListener('change', () => chk.form.submit());
+
+  const inicio = document.getElementById('inicio-troca');
+
+  const ROTULOS = { manual: 'Manual', planilha: 'Planilha', integracao: 'Integração' };
+
+  document.querySelectorAll('select.sel-resp').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      const anterior = sel.dataset.anterior;
+      const nome = sel.options[sel.selectedIndex].text;
+      sel.disabled = true;
+      try {
+        const r = await window.FAT.api('/empresas/' + sel.dataset.empresa + '/responsavel', 'POST', {
+          usuario_id: Number(sel.value), inicio: inicio ? inicio.value : undefined,
+        });
+        sel.dataset.anterior = sel.value;
+        if (r && r.alterado) {
+          const hist = (r.empresa && r.empresa.historico_responsaveis) || [];
+          const pil = sel.closest('tr').querySelector('[data-origem]');
+          if (pil && hist.length) pil.textContent = ROTULOS[hist[0].origem] || hist[0].origem;
+          window.FAT.aviso('Responsável alterado para ' + nome + ' a partir de ' + (inicio ? inicio.options[inicio.selectedIndex].text : 'agora') + '.');
+        } else {
+          window.FAT.aviso('Nada mudou: ' + nome + ' já era o responsável nessa competência.');
+        }
+      } catch (err) {
+        sel.value = anterior;
+        window.FAT.aviso(err.message || 'Não foi possível trocar o responsável.', 'erro');
+      } finally {
+        sel.disabled = false;
+      }
+    });
+  });
+})();
+</script>
+{% endblock %}

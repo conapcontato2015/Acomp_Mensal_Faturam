@@ -269,7 +269,10 @@ def bateu(lid):
 @exigir_usuario_api
 def bateu_empresa(eid, comp):
     e = _empresa_ou_404(eid)
-    c = competencia(comp)
+    try:
+        c = competencia(comp)
+    except ValorInvalido as exc:
+        return _erro(str(exc), 400)
     j = request.get_json(silent=True) or {}
     n = svc_lanc.marcar_bateu_empresa(e, c, bool(j.get("bateu")), usuario_atual(), bool(j.get("substituto")))
     db.session.commit()
@@ -280,7 +283,10 @@ def bateu_empresa(eid, comp):
 @exigir_usuario_api
 def fechamento(eid, comp):
     e = _empresa_ou_404(eid)
-    c = competencia(comp)
+    try:
+        c = competencia(comp)
+    except ValorInvalido as exc:
+        return _erro(str(exc), 400)
     j = request.get_json(silent=True) or {}
     status = j.get("status")
     if status not in ("sem_movimento", "pendente"):

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from functools import wraps
 
-from flask import current_app, g, jsonify, redirect, request, session, url_for
+from flask import current_app, jsonify, redirect, request, session, url_for
 from sqlalchemy import func, or_, select
 
 from .extensions import db
@@ -39,8 +39,9 @@ def _buscar_por_identificador(ident: str) -> Usuario | None:
 
 
 def usuario_atual() -> Usuario | None:
-    if "fat_usuario" in g:
-        return g.fat_usuario
+    # cache por requisição (g pode sobreviver entre requisições quando há um app context externo)
+    if "fat.usuario" in request.environ:
+        return request.environ["fat.usuario"]
     usuario = None
     if modo_local():
         uid = session.get(CHAVE_SESSAO)
@@ -50,19 +51,19 @@ def usuario_atual() -> Usuario | None:
         usuario = _buscar_por_identificador(request.headers.get(current_app.config["AUTH_HEADER"], ""))
     if usuario is not None and not usuario.ativo:
         usuario = None
-    g.fat_usuario = usuario
+    request.environ["fat.usuario"] = usuario
     return usuario
 
 
 def definir_usuario(usuario: Usuario) -> None:
     session[CHAVE_SESSAO] = usuario.id
     session.permanent = True
-    g.fat_usuario = usuario
+    request.environ["fat.usuario"] = usuario
 
 
 def sair() -> None:
     session.pop(CHAVE_SESSAO, None)
-    g.pop("fat_usuario", None)
+    request.environ.pop("fat.usuario", None)
 
 
 def exigir_usuario(view):

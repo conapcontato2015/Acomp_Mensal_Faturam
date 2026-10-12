@@ -179,7 +179,8 @@ def empresa_form(eid: int | None = None):
                 svc_emp.atualizar_empresa(empresa, usuario_atual(), nome=f.get("nome", ""), cnpj=f.get("cnpj", ""),
                                           ativa=f.get("ativa") == "1", tipo_ids=tipo_ids)
                 novo = db.session.get(Usuario, f.get("responsavel_id", type=int) or 0)
-                if novo:
+                atual = svc_emp.responsavel_atual(empresa)
+                if novo and (atual is None or novo.id != atual.id):
                     inicio = competencia(f.get("inicio")) if f.get("inicio") else competencia_padrao()
                     svc_emp.definir_responsavel(empresa, novo, inicio, usuario_atual())
             db.session.commit()

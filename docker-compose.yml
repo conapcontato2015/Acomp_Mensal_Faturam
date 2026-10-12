@@ -1,0 +1,33 @@
+# Teste do modo servidor com PostgreSQL: docker compose up --build  ->  http://localhost:8000
+# Troque as senhas de exemplo antes de usar fora do teste.
+services:
+  banco:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: conap
+      POSTGRES_USER: faturamento
+      POSTGRES_PASSWORD: troque-esta-senha
+    volumes:
+      - banco:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U faturamento -d conap"]
+      interval: 5s
+      retries: 10
+
+  faturamento:
+    build: .
+    depends_on:
+      banco:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://faturamento:troque-esta-senha@banco:5432/conap
+      SECRET_KEY: troque-por-um-texto-longo-e-aleatorio
+      MODO_AUTH: local   # em produção: plataforma (usuário vem do cabeçalho de login)
+    ports:
+      - "8000:8000"
+    volumes:
+      - dados:/dados
+
+volumes:
+  banco:
+  dados:

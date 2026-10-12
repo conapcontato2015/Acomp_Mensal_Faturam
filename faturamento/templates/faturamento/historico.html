@@ -1,0 +1,81 @@
+{% extends "faturamento/base.html" %}
+{% block titulo %}Histórico{% endblock %}
+
+{% block conteudo %}
+{# Valor curto para exibir no detalhe: listas viram texto, vazio vira "—" #}
+{% macro valor(v) -%}
+  {%- if v is none or v == '' -%}—
+  {%- elif v is sameas true -%}sim
+  {%- elif v is sameas false -%}não
+  {%- elif v is mapping -%}{% for k, x in v.items() %}{{ k }}: {{ x if x is not none else '—' }}{{ ', ' if not loop.last }}{% endfor %}
+  {%- elif v is iterable and v is not string -%}{{ v|join(', ') if v else '—' }}
+  {%- else -%}{{ v }}{%- endif -%}
+{%- endmacro %}
+
+{% macro detalhe(antes, depois) -%}
+  {%- if antes is mapping or depois is mapping -%}
+    {%- set a = antes if antes is mapping else {} -%}
+    {%- set d = depois if depois is mapping else {} -%}
+    {%- set ns = namespace(n=0) -%}
+    <ul style="margin:0;padding-left:16px">
+    {%- for k in (a.keys()|list + d.keys()|list)|unique -%}
+      {%- if k not in a -%}
+        {%- if d[k] is not none -%}{%- set ns.n = ns.n + 1 -%}<li><span class="muted">{{ k }}:</span> {{ valor(d[k]) }}</li>{%- endif -%}
+      {%- elif k not in d -%}
+        {%- set ns.n = ns.n + 1 -%}<li><span class="muted">{{ k }}:</span> <s>{{ valor(a[k]) }}</s></li>
+      {%- elif a[k] != d[k] -%}
+        {%- set ns.n = ns.n + 1 -%}<li><span class="muted">{{ k }}:</span> {{ valor(a[k]) }} → <strong>{{ valor(d[k]) }}</strong></li>
+      {%- endif -%}
+    {%- endfor -%}
+    </ul>
+    {%- if not ns.n -%}<span class="muted">—</span>{%- endif -%}
+  {%- elif antes is not none or depois is not none -%}
+    {{ valor(antes) }} → {{ valor(depois) }}
+  {%- else -%}<span class="muted">—</span>{%- endif -%}
+{%- endmacro %}
+
+<header class="cabecalho">
+  <div class="titulo">
+    <h1>Histórico</h1>
+    <span class="muted">Quem mudou o quê e quando: lançamentos, ajustes, conferência, cadastro e trocas de responsável.</span>
+  </div>
+  <form class="acoes" method="get" data-navegar>
+    <label class="campo"><span>Empresa</span>
+      <select class="entrada" name="empresa" style="min-width:240px">
+        <option value="">Todas</option>
+        {% for e in empresas %}<option value="{{ e.id }}" {{ 'selected' if e.id == empresa_id }}>{{ e.nome }}{{ ' (inativa)' if not e.ativa }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="campo"><span>Usuário</span>
+      <select class="entrada" name="usuario">
+        <option value="">Todos</option>
+        {% for u in usuarios %}<option value="{{ u.id }}" {{ 'selected' if u.id == usuario_id }}>{{ u.nome }}</option>{% endfor %}
+      </select>
+    </label>
+    <noscript><button class="btn" type="submit">Filtrar</button></noscript>
+  </form>
+</header>
+
+<section class="cartao">
+  {% if registros %}
+  <div class="rolagem">
+    <table class="tabela">
+      <thead><tr><th>Data</th><th>Usuário</th><th>O que mudou</th><th>Detalhe</th></tr></thead>
+      <tbody>
+      {% for r in registros %}
+        <tr>
+          <td class="muted" style="vertical-align:top">{{ r.data.strftime('%d/%m/%Y %H:%M') }}</td>
+          <td style="vertical-align:top">{{ r.usuario_nome or '—' }}</td>
+          <td class="nome" style="vertical-align:top">{{ r.descricao or r.acao }}</td>
+          <td class="small" style="white-space:normal;vertical-align:top">{{ detalhe(carregar(r.antes), carregar(r.depois)) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if registros|length >= 300 %}<div class="muted small" style="padding:10px 16px">Mostrando as 300 alterações mais recentes. Filtre por empresa ou usuário para ver mais antigas.</div>{% endif %}
+  {% else %}
+    <div class="vazio">Nenhuma alteração registrada{{ ' com esses filtros' if empresa_id or usuario_id }}.</div>
+  {% endif %}
+</section>
+{% endblock %}

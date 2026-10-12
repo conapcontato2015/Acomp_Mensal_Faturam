@@ -1,0 +1,94 @@
+{% extends "faturamento/base.html" %}
+{% block titulo %}Importar responsáveis{% endblock %}
+{% block conteudo %}
+<header class="cabecalho">
+  <div class="titulo">
+    <span class="muted"><a href="{{ url_for('faturamento.empresas') }}">Empresas</a> /</span>
+    <h1>Importar responsáveis</h1>
+  </div>
+  <div class="acoes">
+    <a class="btn" href="{{ url_for('faturamento.importar_responsaveis_modelo') }}">Baixar modelo (.csv com a carteira atual)</a>
+  </div>
+</header>
+
+<div class="aviso info" role="note">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+  {% if provedor == 'manual' %}
+  <span><strong>Integração de responsáveis: não configurada (manual).</strong> Por enquanto a carteira é trocada na tela de Empresas ou por esta planilha.
+  Quando o sistema externo de responsáveis for ligado, a atualização passa a ser automática e esta tela fica só para correções em lote.</span>
+  {% else %}
+  <span><strong>Integração de responsáveis: {{ provedor }}.</strong> Os responsáveis vêm do sistema externo automaticamente; use esta planilha apenas para correções em lote.</span>
+  {% endif %}
+</div>
+
+<section class="cartao pad" style="display:flex;flex-direction:column;gap:14px">
+  <div>
+    <h2 style="font-size:16px;margin-bottom:6px">Formato esperado</h2>
+    <p class="muted" style="margin:0">Arquivo <strong>.xlsx</strong> (primeira aba) ou <strong>.csv</strong> (separado por <code>;</code> ou <code>,</code>), com os nomes das colunas na primeira linha:</p>
+    <ul class="small" style="margin:8px 0 0;padding-left:18px">
+      <li><strong>CNPJ</strong> ou <strong>EMPRESA</strong> — pelo menos uma; o CNPJ tem prioridade, o nome é comparado sem acentos/maiúsculas.</li>
+      <li><strong>RESPONSAVEL</strong> — nome de quem cuida (Hellen, Jaísa, Mariana, Natan…).</li>
+      <li><strong>INICIO</strong> (opcional) — competência a partir da qual vale (AAAA-MM ou MM/AAAA). Em branco: usa a competência escolhida abaixo.</li>
+    </ul>
+    <p class="small muted" style="margin:8px 0 0">Dica: baixe o modelo, que já vem com todas as empresas e o responsável atual — mude só as linhas que precisar.</p>
+  </div>
+  <form method="post" action="{{ url_for('faturamento.importar_responsaveis') }}" enctype="multipart/form-data" class="filtros">
+    <label class="campo"><span>Planilha (.xlsx ou .csv)</span>
+      <input class="entrada" type="file" name="arquivo" accept=".xlsx,.xlsm,.csv,.txt" required>
+    </label>
+    <label class="campo"><span>Sem INICIO, vale a partir de</span>
+      <select class="entrada" name="inicio">
+        {% for c in competencias %}<option value="{{ c|comp_iso }}" {{ 'selected' if c == inicio_padrao }}>{{ c|comp_curta }}</option>{% endfor %}
+      </select>
+    </label>
+    <button class="btn primario" type="submit">Ver prévia</button>
+  </form>
+</section>
+
+{% if relatorio %}
+<section class="cartao pad" style="display:flex;flex-direction:column;gap:14px" aria-label="Prévia">
+  <div>
+    <span class="muted small">Prévia · nada foi alterado ainda</span>
+    <h2 style="font-size:16px">{{ arquivo }}</h2>
+  </div>
+
+  {% if relatorio.erros %}
+    <div class="aviso erro" role="alert"><div><strong>Não foi possível ler a planilha.</strong><ul>{% for e in relatorio.erros %}<li>{{ e }}</li>{% endfor %}</ul></div></div>
+  {% else %}
+  <section class="grade-kpi">
+    <div class="kpi destaque"><span class="rotulo">Serão trocadas</span><span class="valor">{{ relatorio.alteradas|length }}</span></div>
+    <div class="kpi"><span class="rotulo">Sem mudança</span><span class="valor">{{ relatorio.sem_mudanca }}</span></div>
+    <div class="kpi {{ 'alerta' if relatorio.empresas_nao_encontradas }}"><span class="rotulo">Empresas não encontradas</span><span class="valor">{{ relatorio.empresas_nao_encontradas|length }}</span></div>
+    <div class="kpi {{ 'alerta' if relatorio.responsaveis_nao_encontrados }}"><span class="rotulo">Responsáveis não encontrados</span><span class="valor">{{ relatorio.responsaveis_nao_encontrados|length }}</span></div>
+  </section>
+
+  {% if relatorio.alteradas %}
+  <div>
+    <h3 style="font-size:14px;margin-bottom:6px">Trocas</h3>
+    <ul style="margin:0;padding-left:18px">{% for a in relatorio.alteradas %}<li>{{ a }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+  {% if relatorio.empresas_nao_encontradas or relatorio.responsaveis_nao_encontrados %}
+  <div class="aviso erro" role="status"><div>
+    <strong>Linhas que serão ignoradas</strong>
+    <ul>
+      {% for e in relatorio.empresas_nao_encontradas %}<li>Empresa não cadastrada: {{ e }}</li>{% endfor %}
+      {% for r in relatorio.responsaveis_nao_encontrados %}<li>Responsável desconhecido: {{ r }}</li>{% endfor %}
+    </ul>
+  </div></div>
+  {% endif %}
+
+  {% if token %}
+  <form method="post" action="{{ url_for('faturamento.importar_responsaveis_confirmar') }}" style="display:flex;gap:10px;justify-content:flex-end">
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="inicio" value="{{ inicio_padrao|comp_iso }}">
+    <button class="btn" type="submit" name="acao" value="cancelar">Cancelar</button>
+    <button class="btn laranja" type="submit" name="acao" value="confirmar">Aplicar {{ relatorio.alteradas|length }} troca(s)</button>
+  </form>
+  {% else %}
+  <div class="aviso info" role="status"><span>Nenhuma troca a aplicar.</span></div>
+  {% endif %}
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

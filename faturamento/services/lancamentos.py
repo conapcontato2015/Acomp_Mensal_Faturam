@@ -173,7 +173,7 @@ def salvar_mes(empresa: Empresa, comp: date, linhas: list[dict], usuario: Usuari
                             depois={c: valores[c] for c in CAMPOS},
                             descricao=f"{empresa.nome} · {comp_curta(comp)} · {tipo.nome}")
     if resultado.alterados:
-        _limpar_sem_movimento(empresa, comp, usuario)
+        limpar_sem_movimento(empresa, comp, usuario)
     db.session.flush()
     return resultado
 
@@ -189,7 +189,7 @@ def _iguais(a: dict, b: dict) -> bool:
     return True
 
 
-def _limpar_sem_movimento(empresa: Empresa, comp: date, usuario: Usuario) -> None:
+def limpar_sem_movimento(empresa: Empresa, comp: date, usuario: Usuario) -> None:
     f = db.session.scalar(select(Fechamento).where(Fechamento.empresa_id == empresa.id, Fechamento.competencia == comp))
     if f is not None and f.status == STATUS_SEM_MOVIMENTO:
         db.session.delete(f)
@@ -239,7 +239,7 @@ def adicionar_ajuste(lanc: Lancamento, grupo: str, qtde, valor, usuario: Usuario
     lanc.alterado_por_id = usuario.id
     lanc.alterado_em = agora()
     db.session.flush()
-    _limpar_sem_movimento(lanc.empresa, lanc.competencia, usuario)
+    limpar_sem_movimento(lanc.empresa, lanc.competencia, usuario)
     auditoria.registrar("fat_ajuste", "criar", usuario, registro_id=aj.id, empresa_id=lanc.empresa_id,
                         depois={"grupo": grupo, "qtde": q, "valor": v, "motivo": motivo, "observacao": observacao},
                         descricao=f"Ajuste {'+' if q >= 0 else ''}{q} / R$ {fmt_moeda(v)} em {lanc.empresa.nome} · "
@@ -285,3 +285,6 @@ def marcar_bateu_empresa(empresa: Empresa, comp: date, valor: bool, usuario: Usu
             marcar_bateu(lanc, valor, usuario, substituto=True)
             n += 1
     return n
+
+
+_limpar_sem_movimento = limpar_sem_movimento  # compatibilidade

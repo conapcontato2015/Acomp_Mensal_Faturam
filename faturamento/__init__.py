@@ -16,7 +16,7 @@ from .extensions import db, migrate
 bp = Blueprint(
     "faturamento", __name__,
     template_folder="templates",
-    static_folder="static",
+    static_folder="static/faturamento",
     static_url_path="/static/faturamento",
 )
 api_bp = Blueprint("faturamento_api", __name__)

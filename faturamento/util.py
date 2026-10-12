@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
          "agosto", "setembro", "outubro", "novembro", "dezembro"]
@@ -23,10 +23,12 @@ def parse_decimal(valor) -> Decimal | None:
     """Aceita '1.234,56', '1234,56', '1234.56', 1234.56. Vazio -> None."""
     if valor is None:
         return None
+    if isinstance(valor, bool):
+        raise ValorInvalido("valor inválido")
     if isinstance(valor, Decimal):
-        return valor.quantize(Decimal("0.01"))
+        return valor.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     if isinstance(valor, (int, float)):
-        return Decimal(str(valor)).quantize(Decimal("0.01"))
+        return Decimal(str(valor)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     t = _limpar(valor)
     if t == "":
         return None
@@ -41,7 +43,7 @@ def parse_decimal(valor) -> Decimal | None:
         if len(frac) == 3 and inteiro.lstrip("+-").isdigit():  # "6.370" = seis mil trezentos e setenta
             t = inteiro + frac
     try:
-        return Decimal(t).quantize(Decimal("0.01"))
+        return Decimal(t).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     except InvalidOperation as exc:
         raise ValorInvalido(f"'{valor}' não é um número") from exc
 
@@ -68,7 +70,7 @@ def parse_inteiro(valor) -> int | None:
 def fmt_moeda(valor, vazio: str = "—") -> str:
     if valor is None:
         return vazio
-    v = Decimal(valor).quantize(Decimal("0.01"))
+    v = Decimal(valor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     s = f"{abs(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     return ("-" if v < 0 else "") + s
 
@@ -88,11 +90,12 @@ def competencia(valor) -> date:
         return date(valor.year, valor.month, 1)
     t = str(valor).strip()
     m = re.fullmatch(r"(\d{4})-(\d{1,2})(?:-\d{1,2})?", t)
-    if m:
-        return date(int(m.group(1)), int(m.group(2)), 1)
-    m = re.fullmatch(r"(\d{1,2})/(\d{4})", t)
-    if m:
-        return date(int(m.group(2)), int(m.group(1)), 1)
+    ano_mes = (int(m.group(1)), int(m.group(2))) if m else None
+    if ano_mes is None:
+        m = re.fullmatch(r"(\d{1,2})/(\d{4})", t)
+        ano_mes = (int(m.group(2)), int(m.group(1))) if m else None
+    if ano_mes and 1 <= ano_mes[1] <= 12 and ano_mes[0] >= 1900:
+        return date(ano_mes[0], ano_mes[1], 1)
     raise ValorInvalido(f"Competência inválida: '{valor}' (use AAAA-MM)")
 
 
