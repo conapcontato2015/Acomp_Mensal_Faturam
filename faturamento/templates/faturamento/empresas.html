@@ -108,6 +108,9 @@
         const r = await window.FAT.api('/empresas/' + sel.dataset.empresa + '/responsavel', 'POST', {
           usuario_id: Number(sel.value), inicio: inicio ? inicio.value : undefined,
         });
+        // o select mostra quem é o responsável ATUAL depois da troca (o servidor decide)
+        const atual = r && r.empresa && r.empresa.responsavel;
+        if (atual) sel.value = String(atual.id);
         sel.dataset.anterior = sel.value;
         if (r && r.alterado) {
           const hist = (r.empresa && r.empresa.historico_responsaveis) || [];

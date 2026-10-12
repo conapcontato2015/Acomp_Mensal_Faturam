@@ -15,6 +15,17 @@ class ValorInvalido(ValueError):
     pass
 
 
+MAX_DIGITOS_INTEIROS = 13          # NUMERIC(15,2): 13 dígitos antes da vírgula
+MAX_INTEIRO = 2_147_483_647        # coluna INTEGER (quantidades)
+_MILHAR = re.compile(r"[-+]?\d{1,3}(\.\d{3})+")
+
+
+def _checar_tamanho(d: Decimal, original) -> Decimal:
+    if abs(d) >= Decimal(10) ** MAX_DIGITOS_INTEIROS:
+        raise ValorInvalido(f"'{original}': valor grande demais")
+    return d
+
+
 def _limpar(texto) -> str:
     return str(texto).strip().replace("R$", "").replace(" ", "").replace(" ", "")
 
@@ -25,10 +36,13 @@ def parse_decimal(valor) -> Decimal | None:
         return None
     if isinstance(valor, bool):
         raise ValorInvalido("valor inválido")
-    if isinstance(valor, Decimal):
-        return valor.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    if isinstance(valor, (int, float)):
-        return Decimal(str(valor)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    try:
+        if isinstance(valor, Decimal):
+            return _checar_tamanho(valor, valor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        if isinstance(valor, (int, float)):
+            return _checar_tamanho(Decimal(str(valor)), valor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except InvalidOperation as exc:  # nan/inf
+        raise ValorInvalido(f"'{valor}' não é um número") from exc
     t = _limpar(valor)
     if t == "":
         return None
@@ -40,10 +54,12 @@ def parse_decimal(valor) -> Decimal | None:
         t = t.replace(".", "")
     elif "." in t:
         inteiro, _, frac = t.partition(".")
-        if len(frac) == 3 and inteiro.lstrip("+-").isdigit():  # "6.370" = seis mil trezentos e setenta
+        digitos = inteiro.lstrip("+-")
+        # "6.370" = seis mil trezentos e setenta; mas "0.125" é decimal (milhar não começa com 0)
+        if len(frac) == 3 and digitos.isdigit() and not digitos.startswith("0"):
             t = inteiro + frac
     try:
-        return Decimal(t).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        return _checar_tamanho(Decimal(t), valor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     except InvalidOperation as exc:
         raise ValorInvalido(f"'{valor}' não é um número") from exc
 
@@ -53,18 +69,24 @@ def parse_inteiro(valor) -> int | None:
         return None
     if isinstance(valor, bool):
         raise ValorInvalido("valor inválido")
-    if isinstance(valor, int):
-        return valor
     if isinstance(valor, float):
-        if valor != int(valor):
+        if valor != valor or valor in (float("inf"), float("-inf")) or valor != int(valor):
             raise ValorInvalido(f"'{valor}' não é um número inteiro")
-        return int(valor)
-    t = _limpar(valor).replace(".", "")
-    if t == "":
-        return None
-    if not re.fullmatch(r"[-+]?\d+", t):
-        raise ValorInvalido(f"'{valor}' não é um número inteiro")
-    return int(t)
+        valor = int(valor)
+    if isinstance(valor, int):
+        n = valor
+    else:
+        t = _limpar(valor)
+        if t == "":
+            return None
+        if _MILHAR.fullmatch(t):  # só pontos de milhar: "1.234", "12.345.678"
+            t = t.replace(".", "")
+        if not re.fullmatch(r"[-+]?\d+", t):
+            raise ValorInvalido(f"'{valor}' não é um número inteiro")
+        n = int(t)
+    if abs(n) > MAX_INTEIRO:
+        raise ValorInvalido(f"'{valor}': valor grande demais")
+    return n
 
 
 def fmt_moeda(valor, vazio: str = "—") -> str:

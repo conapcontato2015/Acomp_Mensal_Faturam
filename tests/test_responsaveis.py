@@ -5,6 +5,8 @@ import io
 import re
 
 import pytest
+
+from conftest import TOKEN_CSRF
 from openpyxl import Workbook
 from sqlalchemy import select
 
@@ -42,7 +44,7 @@ def _xlsx(linhas) -> bytes:
 
 def _enviar(cli, conteudo: bytes, nome: str, inicio="2026-09"):
     return cli.post("/empresas/importar-responsaveis",
-                    data={"arquivo": (io.BytesIO(conteudo), nome), "inicio": inicio},
+                    data={"csrf_token": TOKEN_CSRF, "arquivo": (io.BytesIO(conteudo), nome), "inicio": inicio},
                     content_type="multipart/form-data")
 
 
@@ -85,7 +87,7 @@ def test_tela_fluxo_xlsx_com_historico_planilha(app, db, login, carteira, usuari
     assert svc_emp.responsavel_atual(carteira["alfa"]).nome == "Natan"
 
     resp = cli.post("/empresas/importar-responsaveis/confirmar",
-                    data={"token": token, "inicio": "2026-09", "acao": "confirmar"})
+                    data={"csrf_token": TOKEN_CSRF, "token": token, "inicio": "2026-09", "acao": "confirmar"})
     assert resp.status_code == 302 and resp.headers["Location"].endswith("/empresas")
     db.session.expire_all()
     vinc = db.session.scalar(select(EmpresaResponsavel).where(
@@ -112,7 +114,7 @@ def test_planilha_sem_colunas_e_sem_trocas(app, db, login, carteira):
     assert "precisa das colunas RESPONSAVEL" in html and _token(html) is None
     html = _enviar(cli, b"EMPRESA;RESPONSAVEL\nPadaria Beta;Natan\n", "r.csv").get_data(as_text=True)
     assert "Nenhuma troca a aplicar" in html and _token(html) is None
-    resp = cli.post("/empresas/importar-responsaveis", data={"arquivo": (io.BytesIO(b"x"), "r.pdf")},
+    resp = cli.post("/empresas/importar-responsaveis", data={"csrf_token": TOKEN_CSRF, "arquivo": (io.BytesIO(b"x"), "r.pdf")},
                     content_type="multipart/form-data", follow_redirects=True)
     assert "Formato não aceito" in resp.get_data(as_text=True)
 
@@ -120,10 +122,10 @@ def test_planilha_sem_colunas_e_sem_trocas(app, db, login, carteira):
 def test_cancelar_e_token_invalido(app, db, login, carteira):
     cli = login("Natan")
     token = _token(_enviar(cli, b"EMPRESA;RESPONSAVEL\nPadaria Beta;Mariana\n", "r.csv").get_data(as_text=True))
-    resp = cli.post("/empresas/importar-responsaveis/confirmar", data={"token": token, "acao": "cancelar"},
+    resp = cli.post("/empresas/importar-responsaveis/confirmar", data={"csrf_token": TOKEN_CSRF, "token": token, "acao": "cancelar"},
                     follow_redirects=True)
     assert "Nada foi alterado" in resp.get_data(as_text=True)
-    resp = cli.post("/empresas/importar-responsaveis/confirmar", data={"token": token}, follow_redirects=True)
+    resp = cli.post("/empresas/importar-responsaveis/confirmar", data={"csrf_token": TOKEN_CSRF, "token": token}, follow_redirects=True)
     assert "expirado" in resp.get_data(as_text=True)
     assert svc_emp.responsavel_atual(carteira["beta"]).nome == "Natan"
 
@@ -141,3 +143,28 @@ def test_modelo_csv(app, db, login, carteira):
     # o modelo baixado volta sem mudanças
     rel = sincronizar(ProvedorPlanilha(resp.data, "modelo.csv"), None, aplicar=False)
     assert rel.alteradas == [] and rel.sem_mudanca == 3 and not rel.erros
+
+
+# ------------------------------------------------------------------ regressões da revisão
+
+@pytest.mark.parametrize("conteudo, nome", [
+    (b"lixo que nao e zip", "r.xlsx"),
+    (b"PK\x03\x04quebrado", "r.xlsx"),
+    (b'CNPJ;RESPONSAVEL\n"aberto;Natan\n' + b"x" * 200000, "r.csv"),
+], ids=["xlsx-texto", "xlsx-zip-quebrado", "csv-campo-gigante"])
+def test_arquivo_ilegivel_vira_erro_amigavel(app, db, carteira, usuarios, conteudo, nome):
+    rel = sincronizar(ProvedorPlanilha(conteudo, nome), usuarios["Natan"], aplicar=False)
+    assert rel.erros and rel.erros[0].startswith("Arquivo ilegível")
+
+
+def test_csv_de_uma_coluna_nao_quebra(app, db, carteira, usuarios):
+    # Sniffer não acha delimitador em arquivo de uma coluna: usa ';' e reclama das colunas que faltam
+    rel = sincronizar(ProvedorPlanilha(b"RESPONSAVEL\nNatan\nHellen\n", "r.csv"), usuarios["Natan"], aplicar=False)
+    assert rel.erros == ["A planilha precisa das colunas RESPONSAVEL e CNPJ ou EMPRESA (na primeira linha)."]
+
+
+def test_tela_arquivo_ilegivel_nao_da_500(app, db, login, carteira):
+    cli = login("Natan")
+    resp = _enviar(cli, b"lixo", "r.xlsx")
+    assert resp.status_code == 200
+    assert "Arquivo ilegível" in resp.get_data(as_text=True)

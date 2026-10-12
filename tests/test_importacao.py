@@ -7,6 +7,8 @@ from datetime import datetime
 from decimal import Decimal
 
 import pytest
+
+from conftest import TOKEN_CSRF
 from openpyxl import Workbook
 from sqlalchemy import select
 
@@ -171,7 +173,7 @@ def test_guardar_e_carregar_previa(app, dados_tmp):
 
 def test_confirmar_cria_empresas_lancamentos_e_ajustes(app, db, usuarios, tipos):
     p = svc.analisar(montar_planilha(), "FATURAMENTO_V2.xlsx")
-    imp = svc.confirmar(p, usuarios["Mariana"], usuarios["Natan"], "FATURAMENTO_V2.xlsx")
+    imp = svc.confirmar(p, usuarios["Mariana"], usuarios["Natan"], "FATURAMENTO_V2.xlsx", outras_carteiras=True)
     db.session.commit()
 
     alfa = db.session.scalar(select(Empresa).where(Empresa.nome == "Loja Alfa (Matriz)"))
@@ -223,7 +225,8 @@ def test_existente_ganha_tipos_e_e_sobrescrito_com_auditoria(app, db, usuarios, 
     db.session.add(Lancamento(empresa_id=alfa.id, competencia=competencia("2026-01"), tipo_id=tipos["NFCE"].id,
                               qtde_autor=1, valor_autor=Decimal("1.00")))
     db.session.commit()
-    imp = svc.confirmar(svc.analisar(montar_planilha(), "f.xlsx"), usuarios["Natan"], usuarios["Natan"])
+    imp = svc.confirmar(svc.analisar(montar_planilha(), "f.xlsx"), usuarios["Natan"], usuarios["Natan"],
+                        outras_carteiras=True)
     db.session.commit()
     db.session.refresh(alfa)
     assert {t.codigo for t in alfa.tipos} == {"NFCE", "NFE_ENT"}
@@ -288,7 +291,7 @@ def test_desfazer(app, db, usuarios, tipos, nova_empresa):
 # ====================================================================== telas
 
 def _enviar(cli, dados=None, responsavel_id=None, nome="FATURAMENTO_V2.xlsx"):
-    form = {"arquivo": (io.BytesIO(dados or montar_planilha()), nome)}
+    form = {"arquivo": (io.BytesIO(dados or montar_planilha()), nome), "csrf_token": TOKEN_CSRF}
     if responsavel_id:
         form["responsavel_id"] = str(responsavel_id)
     return cli.post("/importacao/previa", data=form, content_type="multipart/form-data")
@@ -311,8 +314,9 @@ def test_tela_fluxo_completo(app, db, login, usuarios):
     assert f'value="{usuarios["Jaísa"].id}" selected' in html
     token = _token(html)
 
-    resp = cli.post("/importacao/confirmar", data={"token": token, "responsavel_id": usuarios["Jaísa"].id,
-                                                   "acao": "confirmar"}, follow_redirects=True)
+    resp = cli.post("/importacao/confirmar", data={"csrf_token": TOKEN_CSRF, "token": token, "responsavel_id": usuarios["Jaísa"].id,
+                                                   "acao": "confirmar", "outras_carteiras": "1"},
+                    follow_redirects=True)
     html = resp.get_data(as_text=True)
     assert resp.status_code == 200
     assert "Importação #1 concluída" in html and "4 lançamento(s) novo(s)" in html
@@ -323,12 +327,12 @@ def test_tela_fluxo_completo(app, db, login, usuarios):
     assert alfa.historico_responsaveis[0].usuario.nome == "Jaísa"
 
     # token já usado não importa de novo
-    resp = cli.post("/importacao/confirmar", data={"token": token, "responsavel_id": usuarios["Jaísa"].id},
+    resp = cli.post("/importacao/confirmar", data={"csrf_token": TOKEN_CSRF, "token": token, "responsavel_id": usuarios["Jaísa"].id},
                     follow_redirects=True)
     assert "expirada" in resp.get_data(as_text=True)
     assert db.session.query(Importacao).count() == 1
 
-    resp = cli.post("/importacao/1/desfazer", follow_redirects=True)
+    resp = cli.post("/importacao/1/desfazer", data={"csrf_token": TOKEN_CSRF}, follow_redirects=True)
     assert "Importação #1 desfeita" in resp.get_data(as_text=True)
     db.session.expire_all()
     assert db.session.get(Importacao, 1).desfeita is True
@@ -338,17 +342,158 @@ def test_tela_fluxo_completo(app, db, login, usuarios):
 def test_tela_cancelar_e_erros(app, db, login, dados_tmp):
     cli = login("Natan")
     token = _token(_enviar(cli).get_data(as_text=True))
-    resp = cli.post("/importacao/confirmar", data={"token": token, "acao": "cancelar"}, follow_redirects=True)
+    resp = cli.post("/importacao/confirmar", data={"csrf_token": TOKEN_CSRF, "token": token, "acao": "cancelar"}, follow_redirects=True)
     assert "Nada foi gravado" in resp.get_data(as_text=True)
     assert not (dados_tmp / "importacoes" / f"{token}.json").exists()
     assert db.session.query(Importacao).count() == 0
 
     resp = _enviar(cli, b"lixo", nome="planilha.xlsx")
     assert resp.status_code == 302
-    resp = cli.post("/importacao/previa", data={"arquivo": (io.BytesIO(b"a;b"), "x.csv")},
+    resp = cli.post("/importacao/previa", data={"csrf_token": TOKEN_CSRF, "arquivo": (io.BytesIO(b"a;b"), "x.csv")},
                     content_type="multipart/form-data", follow_redirects=True)
     assert "Formato não aceito" in resp.get_data(as_text=True)
 
 
 def test_tela_exige_usuario(client):
     assert client.get("/importacao").status_code == 302
+
+
+# ====================================================================== regressões da revisão
+
+def _importar(db, usuarios, dados=None, quem="Natan", resp="Natan", **kw):
+    imp = svc.confirmar(svc.analisar(dados or montar_planilha(), "f.xlsx"), usuarios[resp], usuarios[quem], **kw)
+    db.session.commit()
+    return imp
+
+
+def test_desfazer_preserva_lancamento_criado_e_editado_depois(app, db, usuarios, tipos):
+    from faturamento.services import lancamentos as svc_lanc
+    imp = _importar(db, usuarios)
+    alfa = db.session.scalar(select(Empresa).where(Empresa.nome == "Loja Alfa (Matriz)"))
+    # depois da importação, Natan corrige os números de NF-e Entradas de 01/2026
+    svc_lanc.salvar_mes(alfa, competencia("2026-01"), [{"tipo_id": tipos["NFE_ENT"].id, "qtde_autor": "11",
+                                                         "valor_autor": "1300"}], usuarios["Natan"])
+    db.session.commit()
+    out = svc.desfazer(imp, usuarios["Natan"])
+    db.session.commit()
+    l = _lanc(db, "Loja Alfa (Matriz)", "2026-01", tipos["NFE_ENT"])
+    assert l is not None and (l.qtde_autor, l.valor_autor) == (11, Decimal("1300.00"))
+    assert out["mantidos_editados"] == 1 and out["removidos"] == 3
+    assert any("NF-e Entradas" in t for t in out["editados"])
+    assert db.session.scalar(select(Empresa).where(Empresa.nome == "Loja Alfa (Matriz)")) is not None
+
+
+def test_desfazer_preserva_lancamento_com_ajuste_de_outra_origem(app, db, usuarios, tipos):
+    imp = _importar(db, usuarios)
+    l = _lanc(db, "Loja Alfa (Matriz)", "2026-01", tipos["NFCE"])
+    aj = Ajuste(lancamento=l, grupo="AUTOR", qtde=1, valor=Decimal("5.00"), motivo="Outro", observacao="manual",
+                criado_por_id=usuarios["Natan"].id)
+    db.session.add(aj)  # ajuste gravado direto (sem mexer em alterado_em): só a origem do ajuste denuncia
+    db.session.commit()
+    out = svc.desfazer(imp, usuarios["Natan"])
+    db.session.commit()
+    l = _lanc(db, "Loja Alfa (Matriz)", "2026-01", tipos["NFCE"])
+    assert l is not None and out["mantidos_editados"] == 1
+    assert sorted(a.motivo for a in l.ajustes) == ["Importado da planilha", "Outro"]  # nada dele foi removido
+
+
+def test_desfazer_nao_restaura_lancamento_alterado_depois(app, db, usuarios, tipos, nova_empresa):
+    from faturamento.services import lancamentos as svc_lanc
+    alfa = nova_empresa("Loja Alfa (Matriz)", tipos_codigos=("NFCE",))
+    db.session.add(Lancamento(empresa_id=alfa.id, competencia=competencia("2026-01"), tipo_id=tipos["NFCE"].id,
+                              qtde_autor=1, valor_autor=Decimal("1.00")))
+    db.session.commit()
+    imp = _importar(db, usuarios)
+    l = _lanc(db, "Loja Alfa (Matriz)", "2026-01", tipos["NFCE"])
+    svc_lanc.salvar_mes(alfa, competencia("2026-01"), [{"tipo_id": tipos["NFCE"].id, "qtde_autor": "101",
+                                                         "valor_autor": "1001", "qtde_canc": "2", "valor_canc": "20"}],
+                        usuarios["Natan"])
+    db.session.commit()
+    out = svc.desfazer(imp, usuarios["Natan"])
+    db.session.commit()
+    l = _lanc(db, "Loja Alfa (Matriz)", "2026-01", tipos["NFCE"])
+    assert (l.qtde_autor, l.valor_autor) == (101, Decimal("1001.00"))
+    assert out["restaurados"] == 0 and out["mantidos_editados"] == 1
+    assert [a.motivo for a in l.ajustes] == ["Importado da planilha"]  # ajuste da importação também fica
+
+
+def test_desfazer_reimportacao_recria_ajuste_substituido(app, db, usuarios, tipos):
+    _importar(db, usuarios)
+    l = _lanc(db, "Loja Alfa (Matriz)", "2026-01", tipos["NFCE"])
+    assert [(a.qtde, a.valor) for a in l.ajustes] == [(5, Decimal("50.25"))]
+    linhas = list(LINHAS_PADRAO)
+    linhas[0] = _linha("LOJA ALFA (MATRIZ)", JAN, "NFC-e", 100, 1000.5, 7, 70, 2, 20)  # ajuste mudou na planilha
+    imp2 = _importar(db, usuarios, montar_planilha(linhas))
+    l = _lanc(db, "Loja Alfa (Matriz)", "2026-01", tipos["NFCE"])
+    assert [(a.qtde, a.valor) for a in l.ajustes] == [(7, Decimal("70.00"))]
+    sub = svc.resumo(imp2)["ajustes_substituidos"]
+    assert len(sub) == 1 and sub[0]["qtde"] == 5 and sub[0]["valor"] == "50.25"
+
+    out = svc.desfazer(imp2, usuarios["Natan"])
+    db.session.commit()
+    db.session.expire_all()
+    l = _lanc(db, "Loja Alfa (Matriz)", "2026-01", tipos["NFCE"])
+    assert [(a.qtde, a.valor, a.motivo) for a in l.ajustes] == [(5, Decimal("50.25"), "Importado da planilha")]
+    assert out["ajustes_recriados"] == 1 and out["ajustes_removidos"] == 1
+
+
+def test_desfazer_so_quem_importou(app, db, usuarios):
+    imp = _importar(db, usuarios)
+    with pytest.raises(RegraViolada, match="Natan"):
+        svc.desfazer(imp, usuarios["Hellen"])
+    assert imp.desfeita is False
+
+
+def test_confirmar_pula_carteira_de_outra_pessoa(app, db, usuarios, tipos, nova_empresa):
+    nova_empresa("Loja Alfa (Matriz)", responsavel="Hellen", tipos_codigos=("NFCE",))
+    previa = svc.analisar(montar_planilha(), "f.xlsx")
+    assert previa.outras_carteiras(usuarios["Natan"], usuarios["Natan"]) == {"linhas": 2, "empresas": 1}
+    imp = svc.confirmar(previa, usuarios["Natan"], usuarios["Natan"])
+    db.session.commit()
+    r = svc.resumo(imp)
+    assert r["ignorados_outra_carteira"] == 2
+    assert _lanc(db, "Loja Alfa (Matriz)", "2026-01", tipos["NFCE"]) is None
+    assert any("carteira de Hellen" in a["texto"] for a in r["avisos"])
+    assert r["lancamentos_criados"] == 2  # só a Padaria Beta (nova, do próprio Natan)
+
+
+def test_confirmar_empresas_novas_para_outra_pessoa_exige_opcao(app, db, usuarios):
+    previa = svc.analisar(montar_planilha(), "f.xlsx")
+    with pytest.raises(RegraViolada, match="Importar também"):
+        svc.confirmar(previa, usuarios["Mariana"], usuarios["Natan"])
+    db.session.rollback()
+    imp = svc.confirmar(previa, usuarios["Mariana"], usuarios["Natan"], outras_carteiras=True)
+    assert svc.resumo(imp)["lancamentos_criados"] == 4
+
+
+def test_tela_previa_mostra_outras_carteiras_e_desfazer_mostra_mantidos(app, db, login, usuarios, tipos, nova_empresa):
+    from faturamento.services import lancamentos as svc_lanc
+    nova_empresa("Loja Alfa (Matriz)", responsavel="Hellen", tipos_codigos=("NFCE",))
+    cli = login("Natan")
+    html = _enviar(cli, responsavel_id=usuarios["Natan"].id).get_data(as_text=True)
+    assert "<strong>2</strong> lançamento(s) de 1 empresa(s) são de carteiras de outras pessoas" in html
+    assert 'name="outras_carteiras"' in html and svc.OPCAO_OUTRAS in html
+    resp = cli.post("/importacao/confirmar", data={"csrf_token": TOKEN_CSRF, "token": _token(html), "acao": "confirmar",
+                                                   "responsavel_id": usuarios["Natan"].id}, follow_redirects=True)
+    assert "2 lançamento(s) de carteiras de outras pessoas não foram importados" in resp.get_data(as_text=True)
+    beta = db.session.scalar(select(Empresa).where(Empresa.nome == "Padaria Beta"))
+    svc_lanc.salvar_mes(beta, competencia("2026-02"), [{"tipo_id": tipos["NFSE_SAI"].id, "qtde_autor": "4",
+                                                         "valor_autor": "400"}], usuarios["Natan"])
+    db.session.commit()
+    resp = cli.post("/importacao/1/desfazer", data={"csrf_token": TOKEN_CSRF}, follow_redirects=True)
+    html = resp.get_data(as_text=True)
+    assert "1 lançamento(s) alterado(s) depois da importação foram mantidos" in html
+    assert "Padaria Beta · 02/2026 · NFS-e Saídas" in html
+
+
+def test_avaliar_conta_formula_grande_ou_profunda():
+    assert svc.avaliar_conta("=" + "-" * 5000 + "1") is None
+    assert svc.avaliar_conta("=" + "1+" * 300 + "1") is None   # > 500 caracteres
+    assert svc.avaliar_conta("=" + "(" * 240 + "1" + ")" * 240) is None
+    assert svc.avaliar_conta("=1+2") == Decimal("3")
+
+
+def test_formula_gigante_vira_aviso_na_previa(app, db):
+    dados = montar_planilha([_linha("LOJA X", JAN, "NFC-e", 1, "=" + "-" * 3000 + "1")])
+    p = svc.analisar(dados, "f.xlsx")
+    assert any("não consegui calcular" in a.texto and a.destaque for a in p.avisos)

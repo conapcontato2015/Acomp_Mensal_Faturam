@@ -1,4 +1,5 @@
 """Cadastro de empresas e carteira (responsável com histórico por competência)."""
+import json
 from datetime import date
 
 import pytest
@@ -93,13 +94,32 @@ def test_definir_responsavel_mesmo_inicio_substitui(db, nova_empresa, usuarios):
     assert hist[0].usuario.nome == "Mariana" and hist[0].origem == "planilha"
 
 
-def test_definir_responsavel_retroativo_nao_apaga_troca_futura(db, nova_empresa, usuarios):
+def test_definir_responsavel_retroativo_vale_dali_em_diante(db, nova_empresa, usuarios):
+    """Trocar a partir de uma competência faz o novo responsável valer dali em diante (é o atual):
+    vínculos com início posterior saem do histórico e ficam registrados na auditoria."""
     e = nova_empresa("Bio Seiva", responsavel="Natan")
     svc.definir_responsavel(e, usuarios["Hellen"], competencia("2026-09"), usuarios["Natan"])
-    svc.definir_responsavel(e, usuarios["Mariana"], competencia("2026-06"), usuarios["Natan"])
+    assert svc.definir_responsavel(e, usuarios["Mariana"], competencia("2026-06"), usuarios["Jaísa"]) is True
     db.session.commit()
     nomes = {c: svc.responsavel_em(e, competencia(c)).nome for c in ("2026-05", "2026-06", "2026-08", "2026-09")}
-    assert nomes == {"2026-05": "Natan", "2026-06": "Mariana", "2026-08": "Mariana", "2026-09": "Hellen"}
+    assert nomes == {"2026-05": "Natan", "2026-06": "Mariana", "2026-08": "Mariana", "2026-09": "Mariana"}
+    assert svc.responsavel_atual(e).nome == "Mariana"
+    assert [v.usuario.nome for v in e.historico_responsaveis] == ["Mariana", "Natan"]
+    reg = db.session.scalars(select(Auditoria).where(Auditoria.acao == "trocar_responsavel")
+                             .order_by(Auditoria.id.desc())).first()
+    antes = json.loads(reg.antes)
+    assert antes["responsavel"] == "Natan"
+    assert antes["vinculos_posteriores_removidos"] == [{"responsavel": "Hellen", "inicio": "2026-09-01", "origem": "manual"}]
+
+
+def test_definir_responsavel_mesmo_dono_em_inicio_remove_posteriores(db, nova_empresa, usuarios):
+    e = nova_empresa("Bio Seiva", responsavel="Natan")
+    svc.definir_responsavel(e, usuarios["Hellen"], competencia("2026-09"), usuarios["Natan"])
+    # Natan já era o responsável em 06/2026, mas Hellen assumiu depois: voltar Natan a partir de 06 vale.
+    assert svc.definir_responsavel(e, usuarios["Natan"], competencia("2026-06"), usuarios["Natan"]) is True
+    db.session.commit()
+    assert svc.responsavel_atual(e).nome == "Natan"
+    assert len(e.historico_responsaveis) == 1
 
 
 def test_listar_empresas_por_carteira_e_competencia(db, nova_empresa, usuarios):

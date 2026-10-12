@@ -38,7 +38,7 @@ def registrar(tabela: str, acao: str, usuario: Usuario | None, *, registro_id=No
 
 
 def listar(empresa_id: int | None = None, usuario_id: int | None = None,
-           de: date | None = None, ate: date | None = None, limite: int = 300) -> list[Auditoria]:
+           de: date | None = None, ate: date | None = None, limite: int = 300, deslocamento: int = 0) -> list[Auditoria]:
     q = select(Auditoria).order_by(Auditoria.data.desc(), Auditoria.id.desc())
     if empresa_id:
         q = q.where(Auditoria.empresa_id == empresa_id)
@@ -48,7 +48,7 @@ def listar(empresa_id: int | None = None, usuario_id: int | None = None,
         q = q.where(Auditoria.data >= datetime(de.year, de.month, de.day))
     if ate:
         q = q.where(Auditoria.data < datetime(ate.year, ate.month, ate.day, 23, 59, 59))
-    return list(db.session.scalars(q.limit(limite)))
+    return list(db.session.scalars(q.offset(max(0, deslocamento)).limit(limite)))
 
 
 def carregar(texto: str | None):

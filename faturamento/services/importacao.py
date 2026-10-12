@@ -22,7 +22,7 @@ import time
 import zipfile
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -47,6 +47,8 @@ from .empresas import atualizar_empresa, criar_empresa, responsavel_em
 from .lancamentos import CAMPOS, limpar_sem_movimento
 
 MOTIVO_IMPORTACAO = "Importado da planilha"
+OPCAO_OUTRAS = "Importar também lançamentos de carteiras de outras pessoas (como substituto)"
+LIMITE_FORMULA = 500  # caracteres; fórmula maior é tratada como célula ilegível
 
 # nome normalizado da coluna -> campo interno
 COLUNAS = {
@@ -219,6 +221,26 @@ class Previa:
             saida.append(t)
         return saida
 
+    def outras_carteiras(self, usuario: Usuario | None, responsavel: Usuario | None = None) -> dict:
+        """Quantas linhas são de carteiras de outras pessoas (pela competência de cada linha).
+
+        Empresas novas vão para ``responsavel``; contam como de outra carteira se ele não for o usuário.
+        """
+        existentes = _empresas_por_nome()
+        uid = usuario.id if usuario else None
+        linhas = 0
+        nomes: set[str] = set()
+        for i in self.itens:
+            emp = existentes.get(normalizar_nome(i.empresa))
+            if emp is None:
+                dono = responsavel
+            else:
+                dono = responsavel_em(emp, i.competencia)
+            if dono is None or dono.id != uid:
+                linhas += 1
+                nomes.add(normalizar_nome(i.empresa))
+        return {"linhas": linhas, "empresas": len(nomes)}
+
     def conflitos(self) -> dict:
         """O que já existe no banco para as mesmas chaves (para avisar na prévia)."""
         existentes = _empresas_por_nome()
@@ -276,11 +298,13 @@ _OPS = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, as
 def avaliar_conta(formula: str) -> Decimal | None:
     """Avalia contas simples digitadas na célula ('=75536.37-11.5'). Só números e + - * / ( )."""
     texto = (formula or "").strip().lstrip("=").replace(",", ".")
+    if len(texto) > LIMITE_FORMULA:
+        return None
     if not texto or not re.fullmatch(r"[\d.+\-*/() ]+", texto):
         return None
     try:
         arvore = ast.parse(texto, mode="eval")
-    except SyntaxError:
+    except (SyntaxError, RecursionError, MemoryError, ValueError):
         return None
 
     def ev(n):
@@ -297,7 +321,7 @@ def avaliar_conta(formula: str) -> Decimal | None:
 
     try:
         return ev(arvore)
-    except (ValueError, ArithmeticError):
+    except (ValueError, ArithmeticError, RecursionError, MemoryError):
         return None
 
 
@@ -548,19 +572,30 @@ def _json_valores(d: dict) -> dict:
     return {k: (str(v) if isinstance(v, Decimal) else v) for k, v in d.items()}
 
 
-def confirmar(previa: Previa, responsavel: Usuario, usuario: Usuario, nome_arquivo: str | None = None) -> Importacao:
+def confirmar(previa: Previa, responsavel: Usuario, usuario: Usuario, nome_arquivo: str | None = None, *,
+              outras_carteiras: bool = False) -> Importacao:
     """Grava a prévia (uma transação; quem chama faz commit/rollback).
 
     - empresas novas: criadas com ``responsavel`` desde a primeira competência do arquivo e com os
       tipos que tiveram números;
     - empresas existentes: ganham os tipos que faltavam;
     - lançamento 'Bateu' nunca é sobrescrito; os demais são criados/atualizados (com auditoria);
-    - colunas AJUSTE_* viram ajustes com motivo "Importado da planilha" (sem duplicar ao reimportar).
+    - colunas AJUSTE_* viram ajustes com motivo "Importado da planilha" (sem duplicar ao reimportar);
+    - linhas de empresas que, na competência, são da carteira de outra pessoa só entram com
+      ``outras_carteiras=True`` (o usuário importa como substituto); sem isso são puladas e avisadas.
+      Empresas novas vão para ``responsavel``: se ele não for o próprio usuário, também exige a opção.
     """
     if responsavel is None or not responsavel.ativo:
         raise RegraViolada("Escolha o responsável pelas empresas novas.")
+    if usuario is None:
+        raise RegraViolada("Usuário da sessão não identificado.")
     if not previa.itens:
         raise RegraViolada("A planilha não tem nenhuma linha com números para importar.")
+    existentes = _empresas_por_nome()
+    ha_novas = any(normalizar_nome(i.empresa) not in existentes for i in previa.itens)
+    if ha_novas and responsavel.id != usuario.id and not outras_carteiras:
+        raise RegraViolada(f"As empresas novas iriam para a carteira de {responsavel.nome}. Marque “{OPCAO_OUTRAS}” "
+                           "ou escolha você mesmo como responsável.")
     nome_arquivo = nome_arquivo or previa.arquivo
     imp = Importacao(arquivo=nome_arquivo[:255], usuario_id=usuario.id if usuario else None,
                      responsavel_id=responsavel.id)
@@ -568,19 +603,29 @@ def confirmar(previa: Previa, responsavel: Usuario, usuario: Usuario, nome_arqui
     db.session.flush()
 
     tipos = {t.codigo: t for t in db.session.scalars(select(TipoDocumento))}
-    existentes = _empresas_por_nome()
     inicio = min(i.competencia for i in previa.itens)
     avisos: list[dict] = [asdict(a) for a in previa.avisos]
     r = {
         "empresas_criadas": [], "empresas_criadas_ids": [], "empresas_existentes": 0,
         "tipos_adicionados": [], "lancamentos_criados": 0, "lancamentos_alterados": 0, "sem_mudanca": 0,
-        "ignorados_bateu": 0, "ajustes_criados": 0, "ajustes_removidos": 0,
-        "ajustes_ids": [], "alterados": [],
+        "ignorados_bateu": 0, "ignorados_outra_carteira": 0, "ajustes_criados": 0, "ajustes_removidos": 0,
+        "ajustes_ids": [], "alterados": [], "ajustes_substituidos": [], "marcas": {},
     }
 
     por_empresa: dict[str, list[Item]] = defaultdict(list)
     for i in previa.itens:
-        por_empresa[normalizar_nome(i.empresa)].append(i)
+        chave = normalizar_nome(i.empresa)
+        emp = existentes.get(chave)
+        if emp is not None and not outras_carteiras:
+            dono = responsavel_em(emp, i.competencia)
+            if dono is None or dono.id != usuario.id:
+                r["ignorados_outra_carteira"] += 1
+                avisos.append(asdict(Aviso(
+                    f"Linha {i.linha}: {emp.nome} · {comp_curta(i.competencia)} · {i.tipo_nome} é da carteira de "
+                    f"{dono.nome if dono else 'outra pessoa'} — não importado", i.linha, destaque=True)))
+                continue
+        por_empresa[chave].append(i)
+    itens_ok = [i for itens in por_empresa.values() for i in itens]
 
     # ---- empresas
     empresas: dict[str, Empresa] = {}
@@ -604,7 +649,8 @@ def confirmar(previa: Previa, responsavel: Usuario, usuario: Usuario, nome_arqui
     # ---- lançamentos
     atuais = _lancamentos_existentes({e.id for e in empresas.values()})
     meses_tocados: set[tuple[int, date]] = set()
-    for i in previa.itens:
+    tocados: dict[int, Lancamento] = {}
+    for i in itens_ok:
         emp = empresas[normalizar_nome(i.empresa)]
         tipo = tipos[i.tipo_codigo]
         comp = i.competencia
@@ -629,6 +675,7 @@ def confirmar(previa: Previa, responsavel: Usuario, usuario: Usuario, nome_arqui
             db.session.flush()
             atuais[(emp.id, comp, tipo.id)] = lanc
             r["lancamentos_criados"] += 1
+            tocados[lanc.id] = lanc
             auditoria.registrar("fat_lancamento", "criar", usuario, registro_id=lanc.id, empresa_id=emp.id,
                                 depois=base, descricao=f"{rotulo} (importação #{imp.id}, linha {i.linha})")
             meses_tocados.add((emp.id, comp))
@@ -640,6 +687,7 @@ def confirmar(previa: Previa, responsavel: Usuario, usuario: Usuario, nome_arqui
             lanc.alterado_em = agora()
             r["lancamentos_alterados"] += 1
             r["alterados"].append({"id": lanc.id, "antes": _json_valores(antes)})
+            tocados[lanc.id] = lanc
             auditoria.registrar("fat_lancamento", "alterar", usuario, registro_id=lanc.id, empresa_id=emp.id,
                                 antes=antes, depois=base,
                                 descricao=f"{rotulo}: números substituídos pela planilha (importação #{imp.id}, linha {i.linha})")
@@ -656,6 +704,12 @@ def confirmar(previa: Previa, responsavel: Usuario, usuario: Usuario, nome_arqui
             if not importados and q == 0 and v == 0:
                 continue
             for a in importados:
+                r["ajustes_substituidos"].append({
+                    "lancamento_id": lanc.id, "grupo": a.grupo, "qtde": a.qtde, "valor": str(a.valor),
+                    "motivo": a.motivo, "observacao": a.observacao, "criado_por_id": a.criado_por_id,
+                    "criado_em": a.criado_em.isoformat() if a.criado_em else None,
+                })
+                tocados[lanc.id] = lanc
                 auditoria.registrar("fat_ajuste", "remover", usuario, registro_id=a.id, empresa_id=emp.id,
                                     antes={"grupo": a.grupo, "qtde": a.qtde, "valor": a.valor, "motivo": a.motivo},
                                     descricao=f"Ajuste importado substituído em {rotulo} (importação #{imp.id})")
@@ -671,6 +725,7 @@ def confirmar(previa: Previa, responsavel: Usuario, usuario: Usuario, nome_arqui
             r["ajustes_ids"].append(aj.id)
             lanc.alterado_por_id = usuario.id
             lanc.alterado_em = agora()
+            tocados[lanc.id] = lanc
             meses_tocados.add((emp.id, comp))
             auditoria.registrar("fat_ajuste", "criar", usuario, registro_id=aj.id, empresa_id=emp.id,
                                 depois={"grupo": grupo, "qtde": q, "valor": v, "motivo": MOTIVO_IMPORTACAO},
@@ -681,6 +736,10 @@ def confirmar(previa: Previa, responsavel: Usuario, usuario: Usuario, nome_arqui
     for eid, comp in meses_tocados:
         limpar_sem_movimento(emp_por_id[eid], comp, usuario)
 
+    # "Marca" de cada lançamento tocado: como a importação o deixou. Ao desfazer, quem não estiver
+    # mais assim foi mexido depois e é preservado.
+    db.session.flush()
+    r["marcas"] = {str(lid): _marca(l) for lid, l in tocados.items()}
     comps = previa.competencias
     r["avisos"] = avisos
     r["n_avisos"] = len(avisos)
@@ -690,12 +749,17 @@ def confirmar(previa: Previa, responsavel: Usuario, usuario: Usuario, nome_arqui
     r["responsavel"] = responsavel.nome
     imp.resumo = json.dumps(r, ensure_ascii=False)
     auditoria.registrar("fat_importacao", "importar", usuario, registro_id=imp.id,
-                        depois={k: v for k, v in r.items() if k not in ("avisos", "alterados", "ajustes_ids")},
+                        depois={k: v for k, v in r.items()
+                                if k not in ("avisos", "alterados", "ajustes_ids", "ajustes_substituidos", "marcas")},
                         descricao=f"Importação #{imp.id} de {nome_arquivo}: {r['lancamentos_criados']} lançamento(s) "
                                   f"novo(s), {r['lancamentos_alterados']} alterado(s), {r['ajustes_criados']} ajuste(s), "
                                   f"{len(r['empresas_criadas'])} empresa(s) criada(s)")
     db.session.flush()
     return imp
+
+
+def _marca(l: Lancamento) -> str | None:
+    return l.alterado_em.isoformat() if l.alterado_em else None
 
 
 def _ajustes_iguais(lanc: Lancamento, item: Item) -> bool:
@@ -720,28 +784,80 @@ def listar() -> list[Importacao]:
     return list(db.session.scalars(select(Importacao).order_by(Importacao.data.desc(), Importacao.id.desc())))
 
 
+def _editado_depois(l: Lancamento, imp: Importacao, marcas: dict | None) -> bool:
+    """O lançamento foi mexido depois da importação (por alguém ou outra importação)?"""
+    if marcas is not None and str(l.id) in marcas:
+        return _marca(l) != marcas[str(l.id)]
+    # Importações antigas (sem marcas no resumo): qualquer alteração bem depois da importação.
+    return l.alterado_em is not None and l.alterado_em > imp.data + timedelta(seconds=5)
+
+
 def desfazer(imp: Importacao, usuario: Usuario) -> dict:
-    """Remove o que a importação criou (lançamentos não conferidos, ajustes, empresas que ficaram vazias)
-    e devolve os números anteriores dos lançamentos que ela sobrescreveu."""
+    """Desfaz a importação sem destruir trabalho feito depois dela.
+
+    - lançamentos criados por ela são apagados, exceto os conferidos ('Bateu'), os alterados depois
+      da importação e os que ganharam ajustes que não vieram dela (esses ficam e são informados);
+    - só os ajustes que ela criou (ids gravados no resumo) são removidos;
+    - números que ela sobrescreveu voltam ao que eram, salvo se o lançamento foi alterado depois;
+    - ajustes "Importado da planilha" que ela substituiu são recriados;
+    - só quem fez a importação pode desfazê-la.
+    """
     if imp.desfeita:
         raise RegraViolada("Esta importação já foi desfeita.")
+    if usuario is None or imp.usuario_id != usuario.id:
+        dono = imp.usuario.nome if imp.usuario else "outra pessoa"
+        raise RegraViolada(f"Só {dono}, que fez a importação #{imp.id}, pode desfazê-la.")
     r = resumo(imp)
-    out = {"removidos": 0, "mantidos_bateu": 0, "restaurados": 0, "ajustes_removidos": 0, "empresas_removidas": 0}
+    marcas = r.get("marcas")
+    ids_ajustes = set(r.get("ajustes_ids", []))
+    out = {"removidos": 0, "mantidos_bateu": 0, "mantidos_editados": 0, "restaurados": 0,
+           "ajustes_removidos": 0, "ajustes_recriados": 0, "empresas_removidas": 0, "editados": []}
+    preservados: set[int] = set()
+
+    def rot(l: Lancamento) -> str:
+        return f"{l.empresa.nome} · {comp_curta(l.competencia)} · {l.tipo.nome}"
+
+    def preservar(l: Lancamento) -> None:
+        if l.id not in preservados:
+            preservados.add(l.id)
+            out["mantidos_editados"] += 1
+            out["editados"].append(rot(l))
 
     for l in list(db.session.scalars(select(Lancamento).where(Lancamento.importacao_id == imp.id))):
-        rot = f"{l.empresa.nome} · {comp_curta(l.competencia)} · {l.tipo.nome}"
         if l.bateu:
             out["mantidos_bateu"] += 1
+            preservados.add(l.id)
+            continue
+        if _editado_depois(l, imp, marcas) or any(a.id not in ids_ajustes for a in l.ajustes):
+            preservar(l)
             continue
         auditoria.registrar("fat_lancamento", "remover", usuario, registro_id=l.id, empresa_id=l.empresa_id,
-                            antes=_valores_lanc(l), descricao=f"{rot}: removido ao desfazer a importação #{imp.id}")
+                            antes=_valores_lanc(l), descricao=f"{rot(l)}: removido ao desfazer a importação #{imp.id}")
         db.session.delete(l)
         out["removidos"] += 1
     db.session.flush()
 
-    for aid in r.get("ajustes_ids", []):
+    # lançamentos que já existiam e foram alterados/ajustados pela importação
+    pre_existentes: dict[int, Lancamento] = {}
+    for lid in {a["id"] for a in r.get("alterados", [])} | {a["lancamento_id"] for a in r.get("ajustes_substituidos", [])}:
+        l = db.session.get(Lancamento, lid)
+        if l is not None:
+            pre_existentes[lid] = l
+    for aid in ids_ajustes:
         aj = db.session.get(Ajuste, aid)
-        if aj is None or aj.lancamento.bateu:
+        if aj is not None:
+            pre_existentes.setdefault(aj.lancamento_id, aj.lancamento)
+    intocaveis: set[int] = set()
+    for lid, l in pre_existentes.items():
+        if lid in preservados or l.bateu:
+            intocaveis.add(lid)
+        elif _editado_depois(l, imp, marcas):
+            preservar(l)
+            intocaveis.add(lid)
+
+    for aid in sorted(ids_ajustes):
+        aj = db.session.get(Ajuste, aid)
+        if aj is None or aj.lancamento_id in intocaveis:
             continue
         lanc = aj.lancamento
         auditoria.registrar("fat_ajuste", "remover", usuario, registro_id=aj.id, empresa_id=lanc.empresa_id,
@@ -751,20 +867,36 @@ def desfazer(imp: Importacao, usuario: Usuario) -> dict:
         out["ajustes_removidos"] += 1
 
     for alt in r.get("alterados", []):
-        l = db.session.get(Lancamento, alt["id"])
-        if l is None or l.bateu:
+        l = pre_existentes.get(alt["id"])
+        if l is None or alt["id"] in intocaveis:
             continue
         antes = {c: (Decimal(v) if v is not None and c.startswith("valor") else v) for c, v in alt["antes"].items()}
         atual = _valores_lanc(l)
         for c in CAMPOS:
             setattr(l, c, antes.get(c))
-        l.alterado_por_id = usuario.id if usuario else None
+        l.alterado_por_id = usuario.id
         l.alterado_em = agora()
         auditoria.registrar("fat_lancamento", "alterar", usuario, registro_id=l.id, empresa_id=l.empresa_id,
                             antes=atual, depois=antes,
-                            descricao=f"{l.empresa.nome} · {comp_curta(l.competencia)} · {l.tipo.nome}: números "
-                                      f"anteriores restaurados ao desfazer a importação #{imp.id}")
+                            descricao=f"{rot(l)}: números anteriores restaurados ao desfazer a importação #{imp.id}")
         out["restaurados"] += 1
+
+    for sub in r.get("ajustes_substituidos", []):
+        l = pre_existentes.get(sub["lancamento_id"])
+        if l is None or sub["lancamento_id"] in intocaveis:
+            continue
+        aj = Ajuste(lancamento=l, grupo=sub["grupo"], qtde=sub["qtde"], valor=Decimal(sub["valor"]),
+                    motivo=sub["motivo"], observacao=sub.get("observacao"), criado_por_id=sub.get("criado_por_id"))
+        if sub.get("criado_em"):
+            aj.criado_em = datetime.fromisoformat(sub["criado_em"])
+        db.session.add(aj)
+        db.session.flush()
+        l.alterado_por_id = usuario.id
+        l.alterado_em = agora()
+        auditoria.registrar("fat_ajuste", "criar", usuario, registro_id=aj.id, empresa_id=l.empresa_id,
+                            depois={"grupo": aj.grupo, "qtde": aj.qtde, "valor": aj.valor, "motivo": aj.motivo},
+                            descricao=f"{rot(l)}: ajuste importado anterior recriado ao desfazer a importação #{imp.id}")
+        out["ajustes_recriados"] += 1
     db.session.flush()
 
     for eid in r.get("empresas_criadas_ids", []):
@@ -782,9 +914,11 @@ def desfazer(imp: Importacao, usuario: Usuario) -> dict:
         out["empresas_removidas"] += 1
 
     imp.desfeita = True
-    auditoria.registrar("fat_importacao", "desfazer", usuario, registro_id=imp.id, depois=out,
+    auditoria.registrar("fat_importacao", "desfazer", usuario, registro_id=imp.id,
+                        depois={k: v for k, v in out.items() if k != "editados"},
                         descricao=f"Importação #{imp.id} ({imp.arquivo}) desfeita: {out['removidos']} lançamento(s) "
                                   f"removido(s), {out['restaurados']} restaurado(s), {out['mantidos_bateu']} mantido(s) por "
-                                  "já estarem conferidos")
+                                  f"já estarem conferidos, {out['mantidos_editados']} mantido(s) por terem sido "
+                                  "alterados depois da importação")
     db.session.flush()
     return out

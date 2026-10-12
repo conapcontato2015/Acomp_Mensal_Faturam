@@ -115,16 +115,27 @@ def atualizar_empresa(empresa: Empresa, usuario: Usuario | None, *, nome: str | 
 
 def definir_responsavel(empresa: Empresa, novo: Usuario, inicio: date, registrado_por: Usuario | None,
                         origem: str = ORIGEM_MANUAL) -> bool:
-    """Troca a carteira a partir de ``inicio``. Retorna False se nada mudou.
+    """Troca a carteira a partir de ``inicio`` (vale dali em diante). Retorna False se nada mudou.
 
-    Qualquer usuário pode trocar (decisão de 11/10/2026). A troca fica no histórico.
+    Qualquer usuário pode trocar (decisão de 11/10/2026). A troca fica no histórico. Vínculos com
+    início posterior a ``inicio`` são removidos (ficam registrados no "antes" da auditoria), para que
+    o novo responsável passe a ser o atual.
     """
     vigente = empresa.responsavel_em(inicio)
-    if vigente is not None and vigente.usuario_id == novo.id:
+    posteriores = [v for v in empresa.historico_responsaveis if v.inicio > inicio]
+    if vigente is not None and vigente.usuario_id == novo.id and not posteriores:
         return False
     mesmo_inicio = next((v for v in empresa.historico_responsaveis if v.inicio == inicio), None)
     anterior_nome = vigente.usuario.nome if vigente else None
-    if mesmo_inicio is not None:
+    antes = {"responsavel": anterior_nome}
+    if posteriores:
+        antes["vinculos_posteriores_removidos"] = [
+            {"responsavel": v.usuario.nome, "inicio": v.inicio, "origem": v.origem} for v in posteriores]
+        for v in posteriores:
+            empresa.historico_responsaveis.remove(v)
+    if vigente is not None and vigente.usuario_id == novo.id:
+        pass  # já era o responsável em ``inicio``: só caíram os vínculos posteriores
+    elif mesmo_inicio is not None:
         mesmo_inicio.usuario_id = novo.id
         mesmo_inicio.origem = origem
         mesmo_inicio.registrado_por_id = registrado_por.id if registrado_por else None
@@ -135,7 +146,7 @@ def definir_responsavel(empresa: Empresa, novo: Usuario, inicio: date, registrad
         ))
     auditoria.registrar(
         "fat_empresa_responsavel", "trocar_responsavel", registrado_por, empresa_id=empresa.id,
-        antes={"responsavel": anterior_nome}, depois={"responsavel": novo.nome, "inicio": inicio, "origem": origem},
+        antes=antes, depois={"responsavel": novo.nome, "inicio": inicio, "origem": origem},
         descricao=f"Responsável de {empresa.nome}: {anterior_nome or '—'} → {novo.nome} a partir de {inicio:%m/%Y} ({origem})",
     )
     db.session.flush()

@@ -148,3 +148,39 @@ def test_normalizar_nome_e_digitos():
 def test_nome_exibicao():
     assert nome_exibicao("MERCADINHO MILHÃ (MATRIZ)") == "Mercadinho Milhã (Matriz)"
     assert nome_exibicao("ROGER DE SOLONOPOLE") == "Roger de Solonopole"
+
+
+# ------------------------------------------------------------------ regressões da revisão
+
+@pytest.mark.parametrize("ruim", ["1.5", "12.34", "1,5", "1.23", "1.2345", ".5", "1.234,0"])
+def test_parse_inteiro_so_aceita_ponto_de_milhar(ruim):
+    with pytest.raises(ValorInvalido):
+        parse_inteiro(ruim)
+
+
+@pytest.mark.parametrize("entrada, esperado", [("1.234", 1234), ("12.345.678", 12345678), ("-1.000", -1000)])
+def test_parse_inteiro_milhar_valido(entrada, esperado):
+    assert parse_inteiro(entrada) == esperado
+
+
+@pytest.mark.parametrize("entrada, esperado", [
+    ("0.125", Decimal("0.13")), ("-0.125", Decimal("-0.13")), ("01.250", Decimal("1.25")), ("6.370", Decimal("6370.00")),
+])
+def test_parse_decimal_milhar_nao_comeca_com_zero(entrada, esperado):
+    assert parse_decimal(entrada) == esperado
+
+
+@pytest.mark.parametrize("grande", ["99999999999999", "12345678901234,00", 10 ** 13, Decimal("1E+20"), "1" * 40])
+def test_parse_decimal_grande_demais(grande):
+    with pytest.raises(ValorInvalido, match="grande demais"):
+        parse_decimal(grande)
+
+
+def test_parse_decimal_limite_13_digitos_ok():
+    assert parse_decimal("9999999999999,99") == Decimal("9999999999999.99")
+
+
+@pytest.mark.parametrize("grande", ["99999999999999", 10 ** 13, "3000000000"])
+def test_parse_inteiro_grande_demais(grande):
+    with pytest.raises(ValorInvalido, match="grande demais"):
+        parse_inteiro(grande)

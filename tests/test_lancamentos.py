@@ -408,3 +408,37 @@ def test_evolucao_separa_ajuste(db, emp, comp, usuarios, tipos):
     assert [p["competencia"] for p in serie] == [somar_meses(comp, -2), somar_meses(comp, -1), comp]
     assert serie[-1]["saidas"] == Decimal(100) and serie[-1]["saidas_ajuste"] == Decimal(25)
     assert serie[0]["saidas"] == 0
+
+
+# ------------------------------------------------------------------ regressões da revisão
+
+@pytest.mark.parametrize("linhas", ["x", {"tipo_id": 1}, [1, 2], ["a"], None, [None]])
+def test_salvar_mes_formato_invalido_vira_regra(emp, comp, usuarios, linhas):
+    with pytest.raises(RegraViolada, match="lista de objetos"):
+        svc.salvar_mes(emp, comp, linhas, usuarios["Natan"])
+
+
+def test_salvar_mes_tipo_repetido_rejeitado(db, emp, comp, usuarios, tipos):
+    with pytest.raises(RegraViolada, match="mais de uma vez"):
+        svc.salvar_mes(emp, comp, [linha(tipos["NFE_ENT"], 1, 10), linha(tipos["NFE_ENT"], 2, 20)], usuarios["Natan"])
+    db.session.rollback()
+    assert _lanc(db, emp, comp, tipos["NFE_ENT"]) is None
+
+
+@pytest.mark.parametrize("qa", ["1.5", "12.34", "1,5"])
+def test_salvar_mes_quantidade_fracionada_rejeitada(emp, comp, usuarios, tipos, qa):
+    with pytest.raises(RegraViolada):
+        svc.salvar_mes(emp, comp, [linha(tipos["NFE_ENT"], qa, "10")], usuarios["Natan"])
+
+
+def test_ajuste_em_competencia_futura_rejeitado(db, emp, usuarios, tipos):
+    futura = somar_meses(competencia_atual(), 1)
+    with pytest.raises(RegraViolada, match="futura"):
+        svc.obter_ou_criar(emp, futura, tipos["NFE_ENT"], usuarios["Natan"])
+    assert db.session.scalar(select(func.count(Lancamento.id))) == 0
+    # lançamento futuro gravado por fora (ex.: banco antigo) também não aceita ajuste
+    lanc = Lancamento(empresa_id=emp.id, competencia=futura, tipo_id=tipos["NFE_ENT"].id)
+    db.session.add(lanc)
+    db.session.flush()
+    with pytest.raises(RegraViolada, match="futura"):
+        svc.adicionar_ajuste(lanc, "AUTOR", 1, "1", usuarios["Natan"])

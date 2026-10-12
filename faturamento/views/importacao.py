@@ -69,6 +69,7 @@ def importacao_previa():
         "faturamento/importacao_previa.html", previa=previa, token=token, responsavel=responsavel,
         usuarios=svc_emp.usuarios_ativos(), empresas=previa.empresas(),
         totais=previa.totais_por_competencia(), conflitos=previa.conflitos(),
+        outras=previa.outras_carteiras(usuario_atual(), responsavel), opcao_outras=svc_imp.OPCAO_OUTRAS,
     )
 
 
@@ -85,7 +86,8 @@ def importacao_confirmar():
         if responsavel is None:
             raise ValorInvalido("Escolha o responsável pelas empresas novas.")
         previa = svc_imp.carregar_previa(token)
-        imp = svc_imp.confirmar(previa, responsavel, usuario_atual(), previa.arquivo)
+        imp = svc_imp.confirmar(previa, responsavel, usuario_atual(), previa.arquivo,
+                                outras_carteiras=request.form.get("outras_carteiras") == "1")
         db.session.commit()
     except (ValorInvalido, RegraViolada) as exc:
         db.session.rollback()
@@ -98,6 +100,9 @@ def importacao_confirmar():
         f"Importação #{imp.id} concluída: {len(r['empresas_criadas'])} empresa(s) criada(s), "
         f"{r['lancamentos_criados']} lançamento(s) novo(s), {r['lancamentos_alterados']} alterado(s), "
         f"{r['sem_mudanca']} sem mudança, {r['ajustes_criados']} ajuste(s).", "sucesso")
+    if r.get("ignorados_outra_carteira"):
+        flash(f"{r['ignorados_outra_carteira']} lançamento(s) de carteiras de outras pessoas não foram importados "
+              f"(marque “{svc_imp.OPCAO_OUTRAS}” para incluí-los).", "erro")
     if r.get("ignorados_bateu"):
         flash(f"{r['ignorados_bateu']} lançamento(s) já conferido(s) ('Bateu') não foram alterados.", "erro")
     if r.get("n_avisos_destaque"):
@@ -124,6 +129,10 @@ def importacao_desfazer(iid: int):
     flash(msg, "sucesso")
     if out["mantidos_bateu"]:
         flash(f"{out['mantidos_bateu']} lançamento(s) já conferido(s) ('Bateu') foram mantidos.", "erro")
+    if out.get("mantidos_editados"):
+        lista = ", ".join(out["editados"][:10]) + ("…" if len(out["editados"]) > 10 else "")
+        flash(f"{out['mantidos_editados']} lançamento(s) alterado(s) depois da importação foram mantidos como estão: "
+              f"{lista}.", "erro")
     return redirect(url_for("faturamento.importacao"))
 
 

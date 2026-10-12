@@ -45,11 +45,18 @@
 
 <form method="post" action="{{ url_for('faturamento.importacao_confirmar') }}" class="cartao pad" style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;justify-content:space-between">
   <input type="hidden" name="token" value="{{ token }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label class="campo"><span>Responsável pelas {{ novas|length }} empresa(s) nova(s)</span>
     <select class="entrada" name="responsavel_id">
       {% for u in usuarios %}<option value="{{ u.id }}" {{ 'selected' if responsavel and u.id == responsavel.id }}>{{ u.nome }}</option>{% endfor %}
     </select>
   </label>
+  <div style="display:flex;flex-direction:column;gap:4px">
+    {% if outras.linhas %}<span class="small" style="color:var(--laranja-texto)" id="nota-outras"><strong>{{ outras.linhas }}</strong> lançamento(s) de {{ outras.empresas }} empresa(s) são de carteiras de outras pessoas (ou vão para a carteira de outra pessoa) e só entram com a opção abaixo.</span>{% endif %}
+    <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer">
+      <input type="checkbox" name="outras_carteiras" value="1" style="width:18px;height:18px;accent-color:var(--laranja)"> {{ opcao_outras }}
+    </label>
+  </div>
   <div style="display:flex;gap:10px">
     <button class="btn" type="submit" name="acao" value="cancelar" formnovalidate>Cancelar</button>
     <button class="btn laranja" type="submit" name="acao" value="confirmar">Confirmar importação</button>

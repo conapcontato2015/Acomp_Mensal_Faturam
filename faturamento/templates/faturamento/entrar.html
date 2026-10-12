@@ -20,6 +20,7 @@
       {% for cat, msg in mensagens %}<div class="aviso erro">{{ msg }}</div>{% endfor %}
     {% endwith %}
     <form method="post" class="pessoas" aria-label="Escolher usuário">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {% for u in usuarios %}
       <button class="pessoa" type="submit" name="usuario_id" value="{{ u.id }}">
         <span class="avatar" style="background:{{ ['#ED6325','#202F5A','#6B4C8A','#8A4B2E','#2F7D6B','#4A5160'][loop.index0 % 6] }}">{{ iniciais(u.nome) }}</span>

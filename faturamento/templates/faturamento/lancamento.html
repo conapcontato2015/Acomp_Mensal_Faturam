@@ -104,8 +104,6 @@
   </div>
 </div>
 
-{% set ns = namespace(max=0) %}
-{% for p in evolucao %}{% set ns.max = [ns.max, p.entradas + p.entradas_ajuste, p.saidas + p.saidas_ajuste]|max %}{% endfor %}
 <section class="cartao pad" aria-label="Entradas e saídas por mês" style="display:flex;flex-direction:column;gap:14px">
   <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px">
     <div>
@@ -121,15 +119,15 @@
   </div>
   <div class="grafico">
     {% for p in evolucao %}
-    {% set esc = 180 / ns.max if ns.max else 0 %}
+    {% set g = grafico[loop.index0] %}
     <div class="mes">
       <div class="coluna" title="{{ p.rotulo }} · Entradas R$ {{ (p.entradas + p.entradas_ajuste)|moeda }}{% if p.entradas_ajuste %} (ajuste R$ {{ p.entradas_ajuste|moeda }}){% endif %}">
-        <div class="seg topo" style="height:{{ (p.entradas_ajuste * esc)|round|int }}px;background:#9DA9C9"></div>
-        <div class="seg {{ 'topo' if not p.entradas_ajuste }}" style="height:{{ (p.entradas * esc)|round|int }}px;background:var(--marinho)"></div>
+        <div class="seg topo" style="height:{{ g.e_aj }}px;background:#9DA9C9"></div>
+        <div class="seg {{ 'topo' if not g.e_aj }}" style="height:{{ g.e_base }}px;background:var(--marinho)"></div>
       </div>
       <div class="coluna" title="{{ p.rotulo }} · Saídas R$ {{ (p.saidas + p.saidas_ajuste)|moeda }}{% if p.saidas_ajuste %} (ajuste R$ {{ p.saidas_ajuste|moeda }}){% endif %}">
-        <div class="seg topo" style="height:{{ (p.saidas_ajuste * esc)|round|int }}px;background:#F6B08F"></div>
-        <div class="seg {{ 'topo' if not p.saidas_ajuste }}" style="height:{{ (p.saidas * esc)|round|int }}px;background:var(--laranja)"></div>
+        <div class="seg topo" style="height:{{ g.s_aj }}px;background:#F6B08F"></div>
+        <div class="seg {{ 'topo' if not g.s_aj }}" style="height:{{ g.s_base }}px;background:var(--laranja)"></div>
       </div>
     </div>
     {% endfor %}

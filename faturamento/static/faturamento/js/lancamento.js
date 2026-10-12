@@ -2,12 +2,28 @@
 (function () {
   const form = document.getElementById('form-lanc');
   if (!form) return;
-  const { api, aviso, parseNum, moeda, inteiro } = window.FAT;
+  const { api, aviso, parseNum, parseInteiro, moeda, inteiro } = window.FAT;
   const empresa = form.dataset.empresa;
   const comp = form.dataset.comp;
   const chkSub = document.getElementById('substituto');
   const ajustes = JSON.parse(document.getElementById('dados-ajustes').textContent || '{}');
   const linhas = Array.from(form.querySelectorAll('tr.linha'));
+
+  // Valores iniciais de cada linha: o "Bateu" fica bloqueado enquanto a linha tiver edição não salva.
+  const CAMPOS = ['qtde_autor', 'valor_autor', 'qtde_canc', 'valor_canc'];
+  const iniciais = new Map(linhas.map(tr => [tr, CAMPOS.map(n => parseNum(tr.querySelector(`[name="${n}"]`).value))]));
+  const mesmoNumero = (a, b) => (Number.isNaN(a) || Number.isNaN(b)) ? false : a === b;
+  function linhaAlterada(tr) {
+    const ini = iniciais.get(tr) || [];
+    return CAMPOS.some((n, i) => !mesmoNumero(parseNum(tr.querySelector(`[name="${n}"]`).value), ini[i]));
+  }
+  const DICA_SALVAR = 'Salve as alterações antes de marcar';
+  function travarBateu(tr) {
+    const chk = tr.querySelector('.chk-bateu');
+    const suja = linhaAlterada(tr);
+    chk.disabled = !editavel() || !tr.dataset.lancId || suja;
+    if (suja) chk.title = DICA_SALVAR; else chk.removeAttribute('title');
+  }
 
   const substituto = () => !!(chkSub && chkSub.checked);
   const editavel = () => form.dataset.editavel === '1' || substituto();
@@ -21,17 +37,20 @@
       const travada = tr.dataset.bateu === '1';
       tr.querySelectorAll('input.celula').forEach(i => { i.readOnly = !editavel() || travada; });
       tr.querySelectorAll('.btn-ajuste').forEach(b => { b.dataset.travado = (!editavel() || travada) ? '1' : '0'; });
-      tr.querySelector('.chk-bateu').disabled = !editavel() || !tr.dataset.lancId;
+      travarBateu(tr);
     });
     document.querySelectorAll('#btn-salvar, #btn-sem-mov').forEach(b => { b.disabled = !editavel(); });
   }
 
   function validarLinha(tr) {
     const v = n => parseNum(tr.querySelector(`[name="${n}"]`).value);
-    const qa = v('qtde_autor'), va = v('valor_autor'), qc = v('qtde_canc'), vc = v('valor_canc');
+    const q = n => parseInteiro(tr.querySelector(`[name="${n}"]`).value);
+    const iqa = q('qtde_autor'), iqc = q('qtde_canc');
+    const qa = iqa === 'fracao' ? NaN : iqa, va = v('valor_autor'), qc = iqc === 'fracao' ? NaN : iqc, vc = v('valor_canc');
     const nome = tr.dataset.tipo;
     let erro = '';
-    if ([qa, va, qc, vc].some(x => Number.isNaN(x))) erro = 'Só números são aceitos. Para uma diferença, use o botão de ajuste.';
+    if (iqa === 'fracao' || iqc === 'fracao') erro = 'Quantidade deve ser número inteiro';
+    else if ([qa, va, qc, vc].some(x => Number.isNaN(x))) erro = 'Só números são aceitos. Para uma diferença, use o botão de ajuste.';
     else if ([qa, va, qc, vc].some(x => x !== null && x < 0)) erro = 'Números do relatório não podem ser negativos (use um ajuste negativo).';
     else if ((qa === null) !== (va === null)) erro = nome + ' autorizadas: informe quantidade e valor juntos (valor sem quantidade some do resumo).';
     else if ((qc === null) !== (vc === null)) erro = nome + ' canceladas: informe quantidade e valor juntos.';
@@ -49,6 +68,7 @@
     let ent = 0, sai = 0, canc = 0, ok = 0, comMov = 0;
     linhas.forEach(tr => {
       const r = validarLinha(tr);
+      travarBateu(tr);
       const aj = ajustes[tr.dataset.tipoId] || [];
       const tqa = (r.qa || 0) + soma(aj, 'AUTOR', 'qtde');
       const tva = (r.va || 0) + soma(aj, 'AUTOR', 'valor');

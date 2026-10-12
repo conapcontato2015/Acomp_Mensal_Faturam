@@ -2,15 +2,8 @@
 {% block titulo %}Histórico{% endblock %}
 
 {% block conteudo %}
-{# Valor curto para exibir no detalhe: listas viram texto, vazio vira "—" #}
-{% macro valor(v) -%}
-  {%- if v is none or v == '' -%}—
-  {%- elif v is sameas true -%}sim
-  {%- elif v is sameas false -%}não
-  {%- elif v is mapping -%}{% for k, x in v.items() %}{{ k }}: {{ x if x is not none else '—' }}{{ ', ' if not loop.last }}{% endfor %}
-  {%- elif v is iterable and v is not string -%}{{ v|join(', ') if v else '—' }}
-  {%- else -%}{{ v }}{%- endif -%}
-{%- endmacro %}
+{# Valor curto para exibir no detalhe (filtro "hist"): datas/competências e moeda em pt-BR, vazio vira "—" #}
+{% macro valor(v, k='') -%}{{ v|hist(k) }}{%- endmacro %}
 
 {% macro detalhe(antes, depois) -%}
   {%- if antes is mapping or depois is mapping -%}
@@ -18,13 +11,13 @@
     {%- set d = depois if depois is mapping else {} -%}
     {%- set ns = namespace(n=0) -%}
     <ul style="margin:0;padding-left:16px">
-    {%- for k in (a.keys()|list + d.keys()|list)|unique -%}
+    {%- for k in (a.keys()|list + d.keys()|list)|unique if not chave_oculta(k) -%}
       {%- if k not in a -%}
-        {%- if d[k] is not none -%}{%- set ns.n = ns.n + 1 -%}<li><span class="muted">{{ k }}:</span> {{ valor(d[k]) }}</li>{%- endif -%}
+        {%- if d[k] is not none -%}{%- set ns.n = ns.n + 1 -%}<li><span class="muted">{{ k }}:</span> {{ valor(d[k], k) }}</li>{%- endif -%}
       {%- elif k not in d -%}
-        {%- set ns.n = ns.n + 1 -%}<li><span class="muted">{{ k }}:</span> <s>{{ valor(a[k]) }}</s></li>
+        {%- set ns.n = ns.n + 1 -%}<li><span class="muted">{{ k }}:</span> <s>{{ valor(a[k], k) }}</s></li>
       {%- elif a[k] != d[k] -%}
-        {%- set ns.n = ns.n + 1 -%}<li><span class="muted">{{ k }}:</span> {{ valor(a[k]) }} → <strong>{{ valor(d[k]) }}</strong></li>
+        {%- set ns.n = ns.n + 1 -%}<li><span class="muted">{{ k }}:</span> {{ valor(a[k], k) }} → <strong>{{ valor(d[k], k) }}</strong></li>
       {%- endif -%}
     {%- endfor -%}
     </ul>
@@ -73,9 +66,15 @@
       </tbody>
     </table>
   </div>
-  {% if registros|length >= 300 %}<div class="muted small" style="padding:10px 16px">Mostrando as 300 alterações mais recentes. Filtre por empresa ou usuário para ver mais antigas.</div>{% endif %}
+  {% if pagina_hist > 1 or tem_proxima %}
+  <nav class="muted small" aria-label="Páginas do histórico" style="padding:10px 16px;display:flex;gap:16px;align-items:center">
+    {% if pagina_hist > 1 %}<a href="{{ url_for('faturamento.historico', empresa=empresa_id, usuario=usuario_id, pagina=pagina_hist - 1) }}" rel="prev">← Mais recentes</a>{% endif %}
+    <span>Página {{ pagina_hist }}</span>
+    {% if tem_proxima %}<a href="{{ url_for('faturamento.historico', empresa=empresa_id, usuario=usuario_id, pagina=pagina_hist + 1) }}" rel="next">Mais antigas →</a>{% endif %}
+  </nav>
+  {% endif %}
   {% else %}
-    <div class="vazio">Nenhuma alteração registrada{{ ' com esses filtros' if empresa_id or usuario_id }}.</div>
+    <div class="vazio">Nenhuma alteração registrada{{ ' com esses filtros' if empresa_id or usuario_id }}{{ ' nesta página' if pagina_hist > 1 }}.</div>
   {% endif %}
 </section>
 {% endblock %}

@@ -57,12 +57,29 @@ def client(app):
     return app.test_client()
 
 
+TOKEN_CSRF = "token-de-teste"
+
+
 @pytest.fixture()
-def login(client, usuarios):
+def csrf():
+    """csrf(client) -> põe um token CSRF conhecido na sessão e o devolve (campo ``csrf_token`` do form)."""
+
+    def preparar(cli):
+        with cli.session_transaction() as s:
+            s["fat_csrf"] = TOKEN_CSRF
+        return TOKEN_CSRF
+
+    return preparar
+
+
+@pytest.fixture()
+def login(client, usuarios, csrf):
     """login('Natan') -> client já com o usuário na sessão."""
 
     def entrar(nome="Natan"):
-        client.post("/entrar", data={"usuario_id": usuarios[nome].id})
+        tok = csrf(client)
+        r = client.post("/entrar", data={"usuario_id": usuarios[nome].id, "csrf_token": tok})
+        assert r.status_code == 302
         return client
 
     return entrar

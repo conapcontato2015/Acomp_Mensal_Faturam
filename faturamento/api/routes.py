@@ -10,7 +10,7 @@ from flask import abort, jsonify, request
 from .. import api_bp
 from ..extensions import db
 from ..identidade import definir_usuario, exigir_usuario_api, modo_local, usuario_atual
-from ..models import Ajuste, Empresa, Lancamento, TipoDocumento, Usuario
+from ..models import ORIGEM_MANUAL, Ajuste, Empresa, Lancamento, TipoDocumento, Usuario
 from ..services import RegraViolada, SemPermissao
 from ..services import auditoria as aud
 from ..services import empresas as svc_emp
@@ -83,6 +83,34 @@ def _erro(msg, status=422, codigo="regra_violada"):
     return resp
 
 
+@api_bp.before_request
+def _exigir_json():
+    """Escrita só com corpo JSON: formulários de outros sites não conseguem enviar application/json
+    sem preflight CORS (proteção contra CSRF)."""
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and not request.is_json:
+        return _erro("Envie o corpo como JSON (Content-Type: application/json).", 415, "tipo_conteudo")
+    return None
+
+
+def _bool(v, campo: str):
+    """true/false, 1/0, "true"/"false", "1"/"0"; None = não informado."""
+    if v is None or isinstance(v, bool):
+        return v
+    if isinstance(v, int) and v in (0, 1):
+        return bool(v)
+    if isinstance(v, str) and v.strip().lower() in ("true", "false", "1", "0"):
+        return v.strip().lower() in ("true", "1")
+    abort(_erro(f"'{campo}' deve ser verdadeiro ou falso.", 400))
+
+
+def _lista_ids(v, campo: str):
+    if v is None:
+        return None
+    if not isinstance(v, list) or not all(isinstance(x, int) and not isinstance(x, bool) for x in v):
+        abort(_erro(f"'{campo}' deve ser uma lista de números (ids).", 400))
+    return v
+
+
 @api_bp.errorhandler(RegraViolada)
 def _regra(exc: RegraViolada):
     if isinstance(exc, SemPermissao):
@@ -98,8 +126,13 @@ def _empresa_ou_404(eid: int) -> Empresa:
     return e
 
 
+def _corpo() -> dict:
+    j = request.get_json(silent=True)
+    return j if isinstance(j, dict) else {}
+
+
 def _substituto() -> bool:
-    j = request.get_json(silent=True) or {}
+    j = _corpo()
     return bool(j.get("substituto")) or request.args.get("substituto") in ("1", "true")
 
 
@@ -122,8 +155,11 @@ def sessao_get():
 def sessao_post():
     if not modo_local():
         return _erro("No modo plataforma o usuário vem do login.", 400, "modo_plataforma")
-    j = request.get_json(silent=True) or {}
-    u = db.session.get(Usuario, j.get("usuario_id")) if j.get("usuario_id") else None
+    j = _corpo()
+    uid = j.get("usuario_id")
+    if not isinstance(uid, int) or isinstance(uid, bool):
+        return _erro("Usuário inválido.", 400)
+    u = db.session.get(Usuario, uid)
     if u is None or not u.ativo:
         return _erro("Usuário inválido.", 400)
     definir_usuario(u)
@@ -131,11 +167,13 @@ def sessao_post():
 
 
 @api_bp.get("/usuarios")
+@exigir_usuario_api
 def usuarios():
     return jsonify([_usuario_json(u) for u in svc_emp.usuarios_ativos()])
 
 
 @api_bp.get("/tipos-documento")
+@exigir_usuario_api
 def tipos():
     return jsonify([_tipo_json(t) for t in svc_emp.tipos_ativos()])
 
@@ -143,6 +181,7 @@ def tipos():
 # --------------------------------------------------------------------- empresas
 
 @api_bp.get("/empresas")
+@exigir_usuario_api
 def empresas_listar():
     resp = request.args.get("responsavel", type=int)
     incl = request.args.get("incluir_inativas") in ("1", "true")
@@ -153,17 +192,18 @@ def empresas_listar():
 @api_bp.post("/empresas")
 @exigir_usuario_api
 def empresas_criar():
-    j = request.get_json(silent=True) or {}
+    j = _corpo()
     resp = db.session.get(Usuario, j.get("responsavel_id")) if j.get("responsavel_id") else usuario_atual()
     if resp is None:
         return _erro("Responsável inválido.", 400)
     e = svc_emp.criar_empresa(j.get("nome", ""), resp, usuario_atual(), cnpj=j.get("cnpj"),
-                              tipo_ids=j.get("tipos") or [])
+                              tipo_ids=_lista_ids(j.get("tipos"), "tipos") or [])
     db.session.commit()
     return jsonify(_empresa_json(e)), 201
 
 
 @api_bp.get("/empresas/<int:eid>")
+@exigir_usuario_api
 def empresas_detalhe(eid):
     return jsonify(_empresa_json(_empresa_ou_404(eid)))
 
@@ -172,9 +212,9 @@ def empresas_detalhe(eid):
 @exigir_usuario_api
 def empresas_alterar(eid):
     e = _empresa_ou_404(eid)
-    j = request.get_json(silent=True) or {}
+    j = _corpo()
     svc_emp.atualizar_empresa(e, usuario_atual(), nome=j.get("nome"), cnpj=j.get("cnpj"),
-                              ativa=j.get("ativa"), tipo_ids=j.get("tipos"))
+                              ativa=_bool(j.get("ativa"), "ativa"), tipo_ids=_lista_ids(j.get("tipos"), "tipos"))
     db.session.commit()
     return jsonify(_empresa_json(e))
 
@@ -183,22 +223,26 @@ def empresas_alterar(eid):
 @exigir_usuario_api
 def empresas_responsavel(eid):
     e = _empresa_ou_404(eid)
-    j = request.get_json(silent=True) or {}
-    novo = db.session.get(Usuario, j.get("usuario_id")) if j.get("usuario_id") else None
+    j = _corpo()
+    uid = j.get("usuario_id")
+    novo = db.session.get(Usuario, uid) if isinstance(uid, int) and not isinstance(uid, bool) else None
     if novo is None:
         return _erro("Usuário inválido.", 400)
     try:
         inicio = competencia(j["inicio"]) if j.get("inicio") else competencia_padrao()
     except ValorInvalido as exc:
         return _erro(str(exc), 400)
-    mudou = svc_emp.definir_responsavel(e, novo, inicio, usuario_atual(), origem=j.get("origem") or "manual")
+    # origem é sempre "manual" aqui: planilha/integração só pelos provedores (o cliente não escolhe).
+    mudou = svc_emp.definir_responsavel(e, novo, inicio, usuario_atual(), origem=ORIGEM_MANUAL)
     db.session.commit()
+    db.session.refresh(e)
     return jsonify({"alterado": mudou, "empresa": _empresa_json(e)})
 
 
 # --------------------------------------------------------------------- lançamentos
 
 @api_bp.get("/lancamentos")
+@exigir_usuario_api
 def lancamentos_mes():
     e = _empresa_ou_404(request.args.get("empresa", type=int) or 0)
     comp = _comp_arg()
@@ -219,8 +263,10 @@ def lancamentos_gravar(eid, comp):
         c = competencia(comp)
     except ValorInvalido as exc:
         return _erro(str(exc), 400)
-    j = request.get_json(silent=True) or {}
-    res = svc_lanc.salvar_mes(e, c, j.get("linhas") or [], usuario_atual(), substituto=bool(j.get("substituto")))
+    j = _corpo()
+    linhas = j.get("linhas")
+    res = svc_lanc.salvar_mes(e, c, [] if linhas is None else linhas, usuario_atual(),
+                              substituto=bool(j.get("substituto")))
     db.session.commit()
     linhas = svc_lanc.carregar_mes(e, c)
     return jsonify({"alterados": res.alterados, "avisos": res.avisos, "status": svc_fech.status_mes(e, c),
@@ -236,7 +282,7 @@ def ajustes_criar(eid, comp, tipo_id):
     except ValorInvalido as exc:
         return _erro(str(exc), 400)
     tipo = db.session.get(TipoDocumento, tipo_id) or abort(_erro("Tipo inexistente.", 404, "nao_encontrado"))
-    j = request.get_json(silent=True) or {}
+    j = _corpo()
     svc_lanc.exigir_edicao(usuario_atual(), e, c, bool(j.get("substituto")))
     lanc = svc_lanc.obter_ou_criar(e, c, tipo, usuario_atual())
     aj = svc_lanc.adicionar_ajuste(lanc, j.get("grupo", "AUTOR"), j.get("qtde"), j.get("valor"), usuario_atual(),
@@ -259,7 +305,7 @@ def ajustes_remover(aid):
 @exigir_usuario_api
 def bateu(lid):
     lanc = db.session.get(Lancamento, lid) or abort(_erro("Lançamento não encontrado.", 404, "nao_encontrado"))
-    j = request.get_json(silent=True) or {}
+    j = _corpo()
     svc_lanc.marcar_bateu(lanc, bool(j.get("bateu")), usuario_atual(), bool(j.get("substituto")))
     db.session.commit()
     return jsonify({"id": lanc.id, "bateu": lanc.bateu})
@@ -273,7 +319,7 @@ def bateu_empresa(eid, comp):
         c = competencia(comp)
     except ValorInvalido as exc:
         return _erro(str(exc), 400)
-    j = request.get_json(silent=True) or {}
+    j = _corpo()
     n = svc_lanc.marcar_bateu_empresa(e, c, bool(j.get("bateu")), usuario_atual(), bool(j.get("substituto")))
     db.session.commit()
     return jsonify({"alterados": n})
@@ -287,7 +333,7 @@ def fechamento(eid, comp):
         c = competencia(comp)
     except ValorInvalido as exc:
         return _erro(str(exc), 400)
-    j = request.get_json(silent=True) or {}
+    j = _corpo()
     status = j.get("status")
     if status not in ("sem_movimento", "pendente"):
         return _erro("status deve ser 'sem_movimento' ou 'pendente'.", 400)
@@ -299,6 +345,7 @@ def fechamento(eid, comp):
 # --------------------------------------------------------------------- leitura agregada
 
 @api_bp.get("/painel")
+@exigir_usuario_api
 def painel():
     comp = _comp_arg()
     resp = request.args.get("responsavel", type=int)
@@ -311,6 +358,7 @@ def painel():
 
 
 @api_bp.get("/resumo")
+@exigir_usuario_api
 def resumo():
     comp = _comp_arg()
     resp = request.args.get("responsavel", type=int)
@@ -332,6 +380,7 @@ def resumo():
 
 
 @api_bp.get("/evolucao")
+@exigir_usuario_api
 def evolucao():
     e = _empresa_ou_404(request.args.get("empresa", type=int) or 0)
     ate = _comp_arg("ate")
@@ -342,6 +391,7 @@ def evolucao():
 
 
 @api_bp.get("/auditoria")
+@exigir_usuario_api
 def auditoria():
     regs = aud.listar(empresa_id=request.args.get("empresa", type=int), usuario_id=request.args.get("usuario", type=int))
     return jsonify([{"id": r.id, "data": r.data.isoformat(timespec="seconds"), "usuario": r.usuario_nome,

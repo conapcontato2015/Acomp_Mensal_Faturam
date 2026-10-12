@@ -50,6 +50,9 @@ class Config:
 
     MAX_CONTENT_LENGTH = 20 * 1024 * 1024  # uploads de planilha até 20 MB
 
+    # Cookie de sessão não vai em POST vindo de outro site (reforça a proteção CSRF)
+    SESSION_COOKIE_SAMESITE = "Lax"
+
 
 class TestConfig(Config):
     TESTING = True

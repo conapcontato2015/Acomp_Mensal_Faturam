@@ -27,6 +27,7 @@
   </div>
 
   <form method="post" action="{{ url_for('faturamento.importacao_previa') }}" enctype="multipart/form-data" class="filtros">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="campo"><span>Planilha (.xlsx)</span>
       <input class="entrada" type="file" name="arquivo" accept=".xlsx,.xlsm" required>
     </label>
@@ -77,7 +78,8 @@
           <td style="text-align:right">
             {% if not imp.desfeita %}
             <form method="post" action="{{ url_for('faturamento.importacao_desfazer', iid=imp.id) }}"
-                  onsubmit="return confirm('Desfazer a importação #{{ imp.id }}? Os lançamentos criados por ela (exceto os já conferidos) serão apagados e os números alterados voltam ao que eram.');">
+                  onsubmit="return confirm('Desfazer a importação #{{ imp.id }}? Os lançamentos criados por ela (exceto os já conferidos ou alterados depois) serão apagados e os números alterados voltam ao que eram.');">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn pequeno" type="submit">Desfazer</button>
             </form>
             {% endif %}

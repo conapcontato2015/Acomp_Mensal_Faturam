@@ -35,7 +35,7 @@
       <span class="avatar">{{ iniciais(usuario_atual.nome) }}</span>
       <div style="display:flex;flex-direction:column">
         <strong style="font-size:14px">{{ usuario_atual.nome }}</strong>
-        {% if modo_local %}<a href="{{ url_for('faturamento.sair_view') }}">Trocar usuário</a>{% endif %}
+        {% if modo_local %}<form method="post" action="{{ url_for('faturamento.sair_view') }}" style="margin:0"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="link-sair">Trocar usuário</button></form>{% endif %}
       </div>
     </div>
     {% endif %}

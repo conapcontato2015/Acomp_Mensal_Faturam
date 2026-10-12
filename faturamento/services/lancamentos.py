@@ -121,20 +121,28 @@ def salvar_mes(empresa: Empresa, comp: date, linhas: list[dict], usuario: Usuari
     if comp > competencia_atual():
         raise RegraViolada("Não é possível lançar competência futura.")
 
+    if not isinstance(linhas, list) or not all(isinstance(b, dict) for b in linhas):
+        raise RegraViolada("Formato inválido: 'linhas' deve ser uma lista de objetos.")
+
     lancs = lancamentos_do_mes(empresa, comp)
     tipos = {t.id: t for t in db.session.scalars(select(TipoDocumento))}
     erros: list[str] = []
     preparadas = []
+    vistos: set[int] = set()
     for bruta in linhas:
         try:
             tipo_id = int(bruta.get("tipo_id"))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             erros.append("Linha sem tipo de documento.")
             continue
         tipo = tipos.get(tipo_id)
         if tipo is None:
             erros.append(f"Tipo de documento {tipo_id} inexistente.")
             continue
+        if tipo_id in vistos:
+            erros.append(f"{tipo.nome} aparece mais de uma vez no mesmo salvamento.")
+            continue
+        vistos.add(tipo_id)
         valores, e = _normalizar_linha(bruta, tipo.nome)
         erros.extend(e)
         preparadas.append((tipo, valores))
@@ -199,7 +207,13 @@ def limpar_sem_movimento(empresa: Empresa, comp: date, usuario: Usuario) -> None
 
 # ---------------------------------------------------------------- ajustes
 
+def _rejeitar_futura(comp: date) -> None:
+    if comp > competencia_atual():
+        raise RegraViolada("Não é possível lançar competência futura.")
+
+
 def obter_ou_criar(empresa: Empresa, comp: date, tipo: TipoDocumento, usuario: Usuario) -> Lancamento:
+    _rejeitar_futura(comp)
     lanc = buscar(empresa.id, comp, tipo.id)
     if lanc is None:
         resp = responsavel_em(empresa, comp)
@@ -215,7 +229,8 @@ def adicionar_ajuste(lanc: Lancamento, grupo: str, qtde, valor, usuario: Usuario
                      substituto: bool = False, verificar_permissao: bool = True) -> Ajuste:
     if verificar_permissao:
         exigir_edicao(usuario, lanc.empresa, lanc.competencia, substituto)
-    grupo = (grupo or "").upper()
+    _rejeitar_futura(lanc.competencia)
+    grupo = (grupo or "").upper() if isinstance(grupo, str) else ""
     if grupo not in (GRUPO_AUTOR, GRUPO_CANC):
         raise RegraViolada("Grupo do ajuste deve ser AUTOR (autorizadas) ou CANC (canceladas).")
     if lanc.bateu:

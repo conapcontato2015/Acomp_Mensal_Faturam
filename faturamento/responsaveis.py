@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import csv
 import io
+import zipfile
 from dataclasses import dataclass, field
 from datetime import date
 
 from flask import current_app
 from openpyxl import load_workbook
+from openpyxl.utils.exceptions import InvalidFileException
 
 from .extensions import db
 from .models import ORIGEM_INTEGRACAO, ORIGEM_PLANILHA, Usuario
@@ -76,13 +78,26 @@ class ProvedorPlanilha(ProvedorResponsaveis):
         self.nome_arquivo = nome_arquivo
 
     def _linhas(self) -> list[list]:
-        if self.nome_arquivo.lower().endswith((".xlsx", ".xlsm")):
-            wb = load_workbook(io.BytesIO(self.conteudo), read_only=True, data_only=True)
-            ws = wb.worksheets[0]
-            return [list(r) for r in ws.iter_rows(values_only=True)]
-        texto = self.conteudo.decode("utf-8-sig", errors="replace")
-        dialeto = csv.Sniffer().sniff(texto[:2048], delimiters=";,\t") if texto.strip() else csv.excel
-        return [r for r in csv.reader(io.StringIO(texto), dialeto)]
+        try:
+            if self.nome_arquivo.lower().endswith((".xlsx", ".xlsm")):
+                wb = load_workbook(io.BytesIO(self.conteudo), read_only=True, data_only=True)
+                try:
+                    ws = wb.worksheets[0]
+                    return [list(r) for r in ws.iter_rows(values_only=True)]
+                finally:
+                    wb.close()
+            texto = self.conteudo.decode("utf-8-sig", errors="replace")
+            if not texto.strip():
+                return []
+            try:
+                dialeto = csv.Sniffer().sniff(texto[:2048], delimiters=";,\t")
+            except csv.Error:
+                # Sniffer falha em arquivo de uma coluna só: usa o padrão do Excel brasileiro
+                dialeto = type("PontoEVirgula", (csv.excel,), {"delimiter": ";"})
+            return [r for r in csv.reader(io.StringIO(texto), dialeto)]
+        except (csv.Error, zipfile.BadZipFile, InvalidFileException, KeyError, UnicodeDecodeError,
+                IndexError, OSError) as exc:
+            raise ValorInvalido(f"Arquivo ilegível: {exc}") from exc
 
     def buscar(self) -> list[Atribuicao]:
         linhas = self._linhas()

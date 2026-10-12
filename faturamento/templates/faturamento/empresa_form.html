@@ -14,6 +14,7 @@
 </header>
 
 <form method="post" class="cartao pad" style="display:flex;flex-direction:column;gap:20px;max-width:760px" autocomplete="off">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">
     <label class="campo"><span>Nome de exibição</span>
       <input class="entrada" name="nome" required maxlength="160" value="{{ valores.get('nome', empresa.nome if empresa else '') }}">
@@ -45,6 +46,9 @@
           {% for c in competencias %}<option value="{{ c|comp_iso }}" {{ 'selected' if (c|comp_iso) == sel_ini }}>{{ c|comp_curta }}</option>{% endfor %}
         </select>
       </label>
+      {# valores com que o formulário abriu: se nenhum dos dois mudar, o responsável não é mexido #}
+      <input type="hidden" name="responsavel_original" value="{{ valores.get('responsavel_original', responsavel.id if responsavel else '') }}">
+      <input type="hidden" name="inicio_original" value="{{ valores.get('inicio_original', inicio_padrao|comp_iso) }}">
       {% endif %}
     </div>
     {% if empresa %}

@@ -2,9 +2,11 @@
 
 `GET /api/faturamento/v1/` lista as rotas disponíveis. Competência sempre `AAAA-MM`; valores monetários
 como texto decimal (`"395464.73"`). Erros: `{"erro": "<codigo>", "mensagens": [...]}` com 400 (parâmetro
-inválido), 401 (usuário não identificado), 403 `somente_leitura` (carteira de outra pessoa), 404, 422 (regra violada).
+inválido), 401 (usuário não identificado), 403 `somente_leitura` (carteira de outra pessoa), 404, 415 `tipo_conteudo`
+(POST/PUT/DELETE sem `Content-Type: application/json`), 422 (regra violada).
 
-Identificação: modo local → sessão (`POST /sessao`); modo plataforma → cabeçalho `X-Remote-User`.
+Identificação: modo local → sessão (`POST /sessao`); modo plataforma → cabeçalho `X-Remote-User`. Todas as rotas,
+inclusive as de leitura, exigem usuário identificado — exceto `GET /` e `GET /sessao`.
 Escritas aceitam `"substituto": true` para lançar na carteira de outra pessoa.
 
 | Método | Rota | Descrição |
@@ -16,7 +18,7 @@ Escritas aceitam `"substituto": true` para lançar na carteira de outra pessoa.
 | GET | `/empresas?responsavel=&competencia=&incluir_inativas=&busca=` | Empresas (com responsável e histórico) |
 | POST | `/empresas` | `{nome, cnpj, responsavel_id, tipos:[ids]}` |
 | GET/PUT | `/empresas/<id>` | Detalhe / `{nome, cnpj, ativa, tipos}` |
-| POST | `/empresas/<id>/responsavel` | `{usuario_id, inicio:"AAAA-MM", origem}` — troca a carteira |
+| POST | `/empresas/<id>/responsavel` | `{usuario_id, inicio:"AAAA-MM"}` — troca a carteira a partir de `inicio` (vínculos posteriores caem; origem sempre `manual`); devolve a empresa com o responsável atual |
 | GET | `/lancamentos?empresa=&competencia=` | Linhas do mês com ajustes e totais |
 | PUT | `/lancamentos/<empresa>/<AAAA-MM>` | `{linhas:[{tipo_id, qtde_autor, valor_autor, qtde_canc, valor_canc}]}` (tudo ou nada) |
 | POST | `/lancamentos/<empresa>/<AAAA-MM>/<tipo>/ajustes` | `{grupo: AUTOR\|CANC, qtde, valor, motivo, observacao}` |

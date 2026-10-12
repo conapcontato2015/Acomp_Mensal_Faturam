@@ -38,16 +38,32 @@
     if (!/^[-+]?[\d.,]+$/.test(t)) return NaN;
     if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
     else if ((t.match(/\./g) || []).length > 1) t = t.replace(/\./g, '');
-    else if (/^[-+]?\d+\.\d{3}$/.test(t)) t = t.replace('.', '');
+    else if (/^[-+]?[1-9]\d*\.\d{3}$/.test(t)) t = t.replace('.', '');  // "6.370" é milhar; "0.125" é decimal
     const n = Number(t);
-    return isNaN(n) ? NaN : n;
+    if (isNaN(n)) return NaN;
+    if (Math.abs(n) >= 1e13) return NaN;  // mais de 13 dígitos inteiros: grande demais
+    return n;
+  }
+
+  // Quantidade: só inteiro (pontos apenas como milhar, ex.: "1.234"). Devolve null, número, NaN ou
+  // 'fracao' quando é um número válido porém com casas decimais ("1.5", "1,5", "12.34").
+  function parseInteiro(texto) {
+    if (texto === null || texto === undefined) return null;
+    let t = String(texto).trim().replace(/\s/g, '');
+    if (t === '') return null;
+    if (/^[-+]?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+    if (/^[-+]?\d+$/.test(t)) {
+      const n = Number(t);
+      return Math.abs(n) > 2147483647 ? NaN : n;
+    }
+    return Number.isNaN(parseNum(t)) ? NaN : 'fracao';
   }
 
   const moeda = v => (v === null || v === undefined || isNaN(v)) ? '—'
     : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const inteiro = v => (v === null || v === undefined || isNaN(v)) ? '—' : Number(v).toLocaleString('pt-BR');
 
-  window.FAT = { api, aviso, parseNum, moeda, inteiro };
+  window.FAT = { api, aviso, parseNum, parseInteiro, moeda, inteiro };
 
   // Formulários de filtro que navegam ao trocar um select
   document.querySelectorAll('form[data-navegar]').forEach(form => {

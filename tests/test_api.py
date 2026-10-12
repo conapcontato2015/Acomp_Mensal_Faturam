@@ -35,8 +35,9 @@ def test_sessao_por_api(client, usuarios):
     assert client.post(API + "/sessao", json={"usuario_id": 999}).status_code == 400
 
 
-def test_indice_usuarios_tipos(client):
+def test_indice_usuarios_tipos(client, login):
     assert client.get(API + "/").get_json()["versao"] == "v1"
+    login("Natan")
     assert len(client.get(API + "/usuarios").get_json()) == 4
     assert len(client.get(API + "/tipos-documento").get_json()) == 7
 
@@ -100,10 +101,10 @@ def test_ajustes_e_bateu(login, emp, tipos):
     r = c.put(f"{API}/lancamentos/{emp.id}/2026-08", json={"linhas": [_linha(tipos["NFE_ENT"], 11, "1100")]})
     assert r.status_code == 422 and "Bateu" in r.get_json()["mensagens"][0]
     assert c.post(f"{API}/lancamentos/{emp.id}/2026-08/{tid}/ajustes", json={"qtde": 1, "valor": 1}).status_code == 422
-    assert c.delete(f"{API}/ajustes/{aid}").status_code == 422
+    assert c.delete(f"{API}/ajustes/{aid}", json={}).status_code == 422
 
     c.put(f"{API}/lancamentos/{lid}/bateu", json={"bateu": False})
-    r = c.delete(f"{API}/ajustes/{aid}")
+    r = c.delete(f"{API}/ajustes/{aid}", json={})
     assert r.status_code == 200 and r.get_json()["lancamento"]["ajustes"] == []
 
 
@@ -205,3 +206,76 @@ def test_resumo_e_painel(login, emp, tipos):
     assert p["empresas"][0]["status"] == "preenchido" and p["empresas"][0]["saidas"] == "20.00"
     ev = c.get(f"{API}/evolucao?empresa={emp.id}&ate=2026-08&meses=2").get_json()
     assert [x["competencia"] for x in ev] == ["2026-07", "2026-08"]
+
+
+# ------------------------------------------------------------------ regressões da revisão
+
+@pytest.mark.parametrize("rota", ["/usuarios", "/tipos-documento", "/empresas", "/empresas/{eid}",
+                                  "/lancamentos?empresa={eid}", "/painel", "/resumo", "/evolucao?empresa={eid}",
+                                  "/auditoria"])
+def test_leitura_sem_sessao_401(client, emp, rota):
+    r = client.get(API + rota.format(eid=emp.id))
+    assert r.status_code == 401 and r.get_json()["erro"] == "usuario_nao_identificado"
+
+
+def test_indice_e_sessao_sem_login_continuam_abertos(client):
+    assert client.get(API + "/").status_code == 200
+    assert client.get(API + "/sessao").status_code == 200
+
+
+@pytest.mark.parametrize("metodo, rota", [
+    ("post", "/sessao"), ("post", "/empresas"), ("put", "/empresas/{eid}"), ("put", "/lancamentos/{eid}/2026-08"),
+    ("delete", "/ajustes/1"), ("post", "/empresas/{eid}/responsavel"),
+])
+def test_escrita_sem_json_415(login, emp, metodo, rota):
+    c = login("Natan")
+    r = getattr(c, metodo)(API + rota.format(eid=emp.id), data={"usuario_id": "1"})
+    assert r.status_code == 415 and r.get_json()["erro"] == "tipo_conteudo"
+    r = getattr(c, metodo)(API + rota.format(eid=emp.id), data="{}", content_type="text/plain")
+    assert r.status_code == 415
+
+
+@pytest.mark.parametrize("uid", ["1", "abc", [1], True, 1.5, {"a": 1}])
+def test_sessao_usuario_id_nao_inteiro_400(client, uid):
+    client.application.config["PROPAGATE_EXCEPTIONS"] = False
+    r = client.post(API + "/sessao", json={"usuario_id": uid})
+    assert r.status_code == 400
+
+
+def test_alterar_empresa_valida_tipos_e_ativa(login, emp, tipos):
+    c = login("Natan")
+    c.application.config["PROPAGATE_EXCEPTIONS"] = False
+    for ruim in ("abc", [1, "x"], ["1"], 5, [True]):
+        assert c.put(f"{API}/empresas/{emp.id}", json={"tipos": ruim}).status_code == 400, ruim
+    assert c.put(f"{API}/empresas/{emp.id}", json={"ativa": "talvez"}).status_code == 400
+    assert c.put(f"{API}/empresas/{emp.id}", json={"ativa": "false"}).get_json()["ativa"] is False
+    assert c.put(f"{API}/empresas/{emp.id}", json={"ativa": 1}).get_json()["ativa"] is True
+    assert c.put(f"{API}/empresas/{emp.id}", json={"ativa": "0"}).get_json()["ativa"] is False
+    assert c.put(f"{API}/empresas/{emp.id}", json={"ativa": True, "tipos": [tipos["NFCE"].id]}).get_json()["tipos"] == \
+        [tipos["NFCE"].id]
+
+
+@pytest.mark.parametrize("linhas", ["x", [1], {"a": 1}])
+def test_gravar_linhas_mal_formadas_422(login, emp, linhas):
+    c = login("Natan")
+    c.application.config["PROPAGATE_EXCEPTIONS"] = False
+    assert c.put(f"{API}/lancamentos/{emp.id}/2026-08", json={"linhas": linhas}).status_code == 422
+
+
+def test_trocar_responsavel_ignora_origem_do_cliente(login, emp, usuarios):
+    c = login("Natan")
+    r = c.post(f"{API}/empresas/{emp.id}/responsavel",
+               json={"usuario_id": usuarios["Hellen"].id, "inicio": "2026-09", "origem": "integracao"})
+    assert r.get_json()["empresa"]["historico_responsaveis"][0]["origem"] == "manual"
+
+
+def test_trocar_responsavel_retroativo_devolve_o_atual(login, emp, usuarios):
+    from faturamento.util import comp_iso, competencia_atual, somar_meses
+    c = login("Natan")
+    atual = competencia_atual()
+    c.post(f"{API}/empresas/{emp.id}/responsavel", json={"usuario_id": usuarios["Hellen"].id, "inicio": comp_iso(atual)})
+    r = c.post(f"{API}/empresas/{emp.id}/responsavel",
+               json={"usuario_id": usuarios["Mariana"].id, "inicio": comp_iso(somar_meses(atual, -2))})
+    j = r.get_json()
+    assert j["alterado"] is True and j["empresa"]["responsavel"]["nome"] == "Mariana"
+    assert [h["usuario"]["nome"] for h in j["empresa"]["historico_responsaveis"]] == ["Mariana", "Natan"]
