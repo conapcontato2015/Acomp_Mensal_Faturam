@@ -5,8 +5,51 @@
 <nav class="trilha" aria-label="Caminho"><a href="{{ url_for('faturamento.painel', competencia=comp|comp_iso) }}">Painel do mês</a> › Lançamento</nav>
 
 {% if not empresa %}
-  <header class="cabecalho"><div class="titulo"><h1>Lançamento</h1></div></header>
-  <div class="cartao vazio">Nenhuma empresa na sua carteira. <a href="{{ url_for('faturamento.empresas') }}">Cadastre empresas</a> ou <a href="{{ url_for('faturamento.importacao') }}">importe a planilha</a>.</div>
+  <header class="cabecalho">
+    <div class="titulo"><h1>Lançamento</h1><span class="muted">Escolha a empresa para carregar os dados do mês.</span></div>
+    <form class="acoes" method="get" data-navegar>{{ seletor_competencia(comp, competencias) }}</form>
+  </header>
+  {% if not minhas and not todas %}
+  <div class="cartao vazio">Nenhuma empresa cadastrada. <a href="{{ url_for('faturamento.empresas') }}">Cadastre empresas</a> ou <a href="{{ url_for('faturamento.importacao') }}">importe a planilha</a>.</div>
+  {% else %}
+  <form method="get" class="cartao pad escolher-empresa" style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px">
+    <input type="hidden" name="competencia" value="{{ comp|comp_iso }}">
+    <label class="campo" style="flex:1 1 360px"><span>Empresa</span>
+      <input class="entrada" list="lista-empresas-lanc" id="busca-empresa-lanc" placeholder="Digite para pesquisar…" autocomplete="off">
+    </label>
+    <label class="campo" style="flex:1 1 300px"><span>ou escolha na lista</span>
+      <select class="entrada" name="empresa" id="sel-empresa-lanc" required>
+        <option value="">— escolha —</option>
+        {% if minhas %}<optgroup label="Minha carteira">
+          {% for e in minhas %}<option value="{{ e.id }}">{{ e.nome }} · {{ rotulos[status_empresas[e.id]] }}</option>{% endfor %}
+        </optgroup>{% endif %}
+        <optgroup label="Outras carteiras (somente leitura)">
+          {% for e in todas if e not in minhas %}<option value="{{ e.id }}">{{ e.nome }}</option>{% endfor %}
+        </optgroup>
+      </select>
+    </label>
+    <button class="btn primario" type="submit">Carregar</button>
+    <datalist id="lista-empresas-lanc">{% for e in todas %}<option value="{{ e.nome }}" data-id="{{ e.id }}"></option>{% endfor %}</datalist>
+  </form>
+  {% if minhas %}
+  <section class="cartao">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--borda)"><h2>Minha carteira em {{ comp|comp_curta }}</h2></div>
+    <div class="rolagem"><table class="tabela">
+      <tbody>{% for e in minhas %}
+        <tr><td class="nome"><a href="{{ url_for('faturamento.lancamento', empresa=e.id, competencia=comp|comp_iso) }}">{{ e.nome }}</a></td>
+            <td style="text-align:right"><span class="pilula {{ status_empresas[e.id] }}">{{ rotulos[status_empresas[e.id]] }}</span></td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+  </section>
+  {% endif %}
+  <script>
+    (function () {
+      const busca = document.getElementById('busca-empresa-lanc'), sel = document.getElementById('sel-empresa-lanc');
+      const mapa = {}; document.querySelectorAll('#lista-empresas-lanc option').forEach(o => { mapa[o.value] = o.dataset.id; });
+      busca.addEventListener('change', () => { if (mapa[busca.value]) { sel.value = mapa[busca.value]; sel.form.submit(); } });
+    })();
+  </script>
+  {% endif %}
 {% else %}
 <header class="cabecalho">
   <div class="titulo">

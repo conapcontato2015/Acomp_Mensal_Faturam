@@ -43,12 +43,27 @@ def _nome_carteira(resp_id: int | None) -> str:
     return "—"
 
 
-def _dados(comp: date, resp_id: int | None) -> dict:
-    cartoes = svc_res.conferencia(comp, resp_id)
+def _empresas_escolhidas() -> set[int]:
+    """Empresas marcadas no seletor (?empresa=1&empresa=4). Vazio = todas."""
+    ids = set()
+    for v in request.args.getlist("empresa"):
+        for parte in str(v).split(","):
+            if parte.strip().isdigit():
+                ids.add(int(parte))
+    return ids
+
+
+def _dados(comp: date, resp_id: int | None, escolhidas: set[int] | None = None) -> dict:
+    todos = svc_res.conferencia(comp, resp_id)
+    # Seleção que não pertence a esta carteira/competência é ignorada (mostra todas).
+    validas = (escolhidas or set()) & {c.empresa.id for c in todos}
+    cartoes = [c for c in todos if not validas or c.empresa.id in validas]
     total = sum(c.total for c in cartoes)
     bateram = sum(c.n_bateu for c in cartoes)
     return {
         "cartoes": cartoes,
+        "opcoes": [(c.empresa.id, c.empresa.nome) for c in todos],
+        "validas": validas,
         "progresso": {
             "linhas": total, "bateram": bateram,
             "percentual": round(bateram / total * 100) if total else 0,
@@ -65,7 +80,8 @@ def conferencia():
     resp_id, carteira = _carteira()
     vista = "pendencia" if request.args.get("vista") == "pendencia" else "todas"
     usuario = usuario_atual()
-    dados = _dados(comp, resp_id)
+    escolhidas = _empresas_escolhidas()
+    dados = _dados(comp, resp_id, escolhidas)
     somente_leitura = resp_id != usuario.id
     cartoes = dados["cartoes"]
     visiveis = [c for c in cartoes if not c.tudo_bateu] if vista == "pendencia" else cartoes
@@ -77,6 +93,7 @@ def conferencia():
         somente_leitura=somente_leitura, editaveis=editaveis, nome_carteira=_nome_carteira(resp_id),
         usuarios=svc_emp.usuarios_ativos(), competencias=_competencias_para_seletor(comp),
         dica_ajuste=_dica_ajuste, ajuste_curto=_ajuste_curto,
+        opcoes_empresas=dados["opcoes"], escolhidas=dados["validas"], empresa_param=sorted(dados["validas"]),
     )
 
 
@@ -85,7 +102,7 @@ def conferencia():
 def conferencia_excel():
     comp = _comp()
     resp_id, _ = _carteira()
-    conteudo = svc_exp.planilha_conferencia(comp, svc_res.conferencia(comp, resp_id))
+    conteudo = svc_exp.planilha_conferencia(comp, _dados(comp, resp_id, _empresas_escolhidas())["cartoes"])
     nome = svc_exp.nome_arquivo_conferencia(comp)
     return Response(
         conteudo,
@@ -99,7 +116,7 @@ def conferencia_excel():
 def conferencia_imprimir():
     comp = _comp()
     resp_id, carteira = _carteira()
-    dados = _dados(comp, resp_id)
+    dados = _dados(comp, resp_id, _empresas_escolhidas())
     return render_template(
         "faturamento/conferencia_impressao.html", comp=comp, carteira=carteira,
         cartoes=dados["cartoes"], progresso=dados["progresso"], nome_carteira=_nome_carteira(resp_id),

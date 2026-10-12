@@ -34,7 +34,7 @@
     <label class="campo"><span>Responsável por estas empresas</span>
       <select class="entrada" name="responsavel_id">
         {% for u in usuarios %}
-          <option value="{{ u.id }}" {{ 'selected' if usuario_atual and u.id == usuario_atual.id }}>{{ u.nome }}{{ ' (eu)' if usuario_atual and u.id == usuario_atual.id }}</option>
+          <option value="{{ u.id }}" {{ 'selected' if usuario_atual and u.id == usuario_atual.id }}>{{ u.nome }}</option>
         {% endfor %}
       </select>
     </label>

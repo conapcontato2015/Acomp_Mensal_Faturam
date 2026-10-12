@@ -184,10 +184,13 @@ def lancamento():
     empresa_id = request.args.get("empresa", type=int)
     minhas = svc_emp.listar_empresas(usuario.id, comp)
     todas = svc_emp.listar_empresas(None, comp)
-    empresa = db.session.get(Empresa, empresa_id) if empresa_id else (minhas[0] if minhas else None)
+    # Sem empresa escolhida, nada é carregado: a tela só pede a escolha.
+    empresa = db.session.get(Empresa, empresa_id) if empresa_id else None
     if empresa is None:
+        status = {e.id: svc_fech.status_mes(e, comp) for e in minhas}
         return render_template("faturamento/lancamento.html", comp=comp, empresa=None, minhas=minhas, todas=todas,
-                               competencias=_competencias_para_seletor(comp))
+                               competencias=_competencias_para_seletor(comp), status_empresas=status,
+                               rotulos=svc_fech.ROTULOS)
     linhas = svc_lanc.carregar_mes(empresa, comp)
     pode = svc_lanc.pode_editar(usuario, empresa, comp)
     resp = svc_emp.responsavel_em(empresa, comp)

@@ -39,6 +39,19 @@
   .aj-marca { cursor: help; }
   .selo:focus-visible { outline: 2px solid var(--laranja); outline-offset: 2px; }
   .conf-nota { font-size: 13px; color: var(--muted); }
+  .sel-empresas { position: relative; margin: 0; }
+  .sel-empresas .busca { min-width: 300px; }
+  .sel-empresas .painel { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; width: min(420px, 90vw); background: #fff; border: 1px solid var(--borda); border-radius: 12px; box-shadow: 0 12px 32px rgba(32,47,90,.16); }
+  .sel-empresas .lista { max-height: 300px; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; }
+  .sel-empresas .opcao { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  .sel-empresas .opcao:hover { background: var(--fundo); }
+  .sel-empresas .opcao[hidden], .sel-empresas [hidden] { display: none; }
+  .sel-empresas .opcao input { width: 18px; height: 18px; accent-color: var(--marinho); }
+  .sel-empresas .rodape-painel { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--borda-2); }
+  .sel-empresas .rodape-painel .btn { margin-left: auto; }
+  .escolhidas { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .pequeno-chip { min-height: 32px; padding: 5px 12px; gap: 6px; }
+  @media (max-width: 520px) { .sel-empresas .busca { min-width: 0; width: 100%; } }
   @media (max-width: 900px) {
     .conf-resumo { grid-template-columns: 1fr 1fr; }
     .conf-resumo .principal { grid-column: 1 / -1; }
@@ -78,9 +91,9 @@
     <span class="muted">Relatório SEFAZ (com ajustes) × sistema contábil. Clique no círculo quando a linha bater.</span>
   </div>
   <div class="acoes">
-    <a class="btn" href="{{ url_for('faturamento.conferencia_excel', competencia=comp|comp_iso, carteira=carteira) }}">
+    <a class="btn" href="{{ url_for('faturamento.conferencia_excel', competencia=comp|comp_iso, carteira=carteira, empresa=empresa_param) }}">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>Excel</a>
-    <a class="btn" target="_blank" rel="noopener" href="{{ url_for('faturamento.conferencia_imprimir', competencia=comp|comp_iso, carteira=carteira) }}">
+    <a class="btn" target="_blank" rel="noopener" href="{{ url_for('faturamento.conferencia_imprimir', competencia=comp|comp_iso, carteira=carteira, empresa=empresa_param) }}">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>PDF</a>
   </div>
 </header>
@@ -114,15 +127,50 @@
     {{ seletor_carteira(usuarios, carteira, 'Carteira') }}
     {{ seletor_competencia(comp, competencias) }}
     <input type="hidden" name="vista" value="{{ vista }}">
+    {% for eid in empresa_param %}<input type="hidden" name="empresa" value="{{ eid }}" data-manter-empresa>{% endfor %}
     <noscript><button class="btn" type="submit">Aplicar</button></noscript>
   </form>
+  {% if opcoes_empresas %}
+  <form method="get" class="sel-empresas" data-sel-empresas>
+    <input type="hidden" name="carteira" value="{{ carteira }}">
+    <input type="hidden" name="competencia" value="{{ comp|comp_iso }}">
+    <input type="hidden" name="vista" value="{{ vista }}">
+    <label class="campo"><span>Empresas</span>
+      <input type="search" class="entrada busca" placeholder="{{ 'Pesquisar e escolher empresas…' if not escolhidas else escolhidas|length ~ ' selecionada(s) — pesquisar…' }}"
+             aria-controls="lista-empresas" aria-expanded="false" autocomplete="off" data-busca>
+    </label>
+    <div class="painel" id="lista-empresas" hidden data-painel>
+      <div class="lista" role="group" aria-label="Escolher empresas">
+        {% for eid, nome in opcoes_empresas %}
+        <label class="opcao" data-nome="{{ nome|lower }}"><input type="checkbox" name="empresa" value="{{ eid }}" {{ 'checked' if eid in escolhidas }}> {{ nome }}</label>
+        {% endfor %}
+        <p class="muted small sem-resultado" hidden data-sem-resultado>Nenhuma empresa com esse nome.</p>
+      </div>
+      <div class="rodape-painel">
+        <button type="button" class="link-btn" data-marcar-visiveis>Marcar as encontradas</button>
+        <button type="button" class="link-btn" data-limpar>Limpar seleção</button>
+        <button type="submit" class="btn primario pequeno">Exibir</button>
+      </div>
+    </div>
+  </form>
+  {% endif %}
   <div class="vistas" role="group" aria-label="Mostrar">
     {% for chave, rot in [('todas', 'Todas as empresas'), ('pendencia', 'Só com pendência')] %}
       <a class="chip {{ 'on' if vista == chave }}" aria-current="{{ 'true' if vista == chave else 'false' }}"
-         href="{{ url_for('faturamento.conferencia', competencia=comp|comp_iso, carteira=carteira, vista=chave) }}">{{ rot }}</a>
+         href="{{ url_for('faturamento.conferencia', competencia=comp|comp_iso, carteira=carteira, vista=chave, empresa=empresa_param) }}">{{ rot }}</a>
     {% endfor %}
   </div>
 </section>
+
+{% if escolhidas %}
+<div class="escolhidas" aria-label="Empresas exibidas">
+  <span class="muted small">Exibindo:</span>
+  {% for eid, nome in opcoes_empresas if eid in escolhidas %}
+    <a class="chip pequeno-chip" title="Tirar {{ nome }}" href="{{ url_for('faturamento.conferencia', competencia=comp|comp_iso, carteira=carteira, vista=vista, empresa=(empresa_param|reject('equalto', eid)|list)) }}">{{ nome }} <span aria-hidden="true">×</span><span class="sr-only">(remover)</span></a>
+  {% endfor %}
+  <a class="link-btn small" href="{{ url_for('faturamento.conferencia', competencia=comp|comp_iso, carteira=carteira, vista=vista) }}">Mostrar todas</a>
+</div>
+{% endif %}
 
 {% if cartoes %}
 <div class="cartoes">
@@ -208,4 +256,5 @@
 </div>
 {% endblock %}
 
-{% block scripts %}<script src="{{ url_for('faturamento.static', filename='js/conferencia.js') }}"></script>{% endblock %}
+{% block scripts %}<script src="{{ url_for('faturamento.static', filename='js/conferencia.js') }}"></script>
+<script src="{{ url_for('faturamento.static', filename='js/selecao_empresas.js') }}"></script>{% endblock %}

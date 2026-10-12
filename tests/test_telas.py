@@ -464,3 +464,23 @@ def test_grafico_na_tela_com_ajuste_negativo(login, emp, tipos, usuarios, db):
     alturas = [int(h) for h in re.findall(r'class="seg[^"]*" style="height:(-?\d+)px', html)]
     assert alturas and min(alturas) >= 0 and max(alturas) <= 180
     assert 180 in alturas  # saídas de 07/2026 são a maior barra
+
+
+def test_lancamento_sem_empresa_so_pede_escolha(login, nova_empresa, tipos, usuarios, db):
+    """Ao abrir /lancamento nenhum dado é carregado: só a escolha da empresa."""
+    from faturamento.services import lancamentos as svc_lanc
+    from faturamento.util import competencia
+    e = nova_empresa("Empresa Escolha", "Natan")
+    svc_lanc.salvar_mes(e, competencia("2026-08"), [{"tipo_id": tipos["NFCE"].id, "qtde_autor": "5", "valor_autor": "10,00"}], usuarios["Natan"])
+    db.session.commit()
+    html = login("Natan").get("/lancamento?competencia=2026-08").get_data(as_text=True)
+    assert "Escolha a empresa" in html
+    assert 'id="form-lanc"' not in html          # grade de lançamento não aparece
+    assert "Empresa Escolha" in html              # mas a empresa está na lista para escolher
+    html = login("Natan").get(f"/lancamento?competencia=2026-08&empresa={e.id}").get_data(as_text=True)
+    assert 'id="form-lanc"' in html
+
+
+def test_importacao_responsavel_sem_eu(login):
+    html = login("Natan").get("/importacao").get_data(as_text=True)
+    assert "(eu)" not in html

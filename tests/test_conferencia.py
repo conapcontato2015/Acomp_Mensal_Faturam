@@ -81,8 +81,8 @@ def test_carteira_todos_e_somente_leitura(login, cenario):
 def test_vista_pendencia_esconde_empresas_conferidas(login, cenario):
     c = login("Natan")
     html = c.get("/conferencia?competencia=2026-08&vista=pendencia").get_data(as_text=True)
-    assert "Alfa Comércio" in html
-    assert "Beta Serviços" not in html
+    assert 'aria-label="Alfa Comércio"' in html  # cartão exibido
+    assert 'aria-label="Beta Serviços"' not in html  # cartão escondido (o nome segue no seletor de empresas)
     # os contadores continuam considerando a carteira toda
     assert 'data-ok="1"' in html and 'data-pendentes="1"' in html
 
@@ -95,7 +95,7 @@ def test_vazios(login, cenario, usuarios, db):
     db.session.commit()
     html = c.get("/conferencia?competencia=2026-08&vista=pendencia").get_data(as_text=True)
     assert "já foram conferidas" in html
-    assert "Alfa Comércio" not in html
+    assert 'aria-label="Alfa Comércio"' not in html
 
 
 def test_api_bateu_reflete_na_pagina(login, cenario):
@@ -190,3 +190,27 @@ def test_imprimir(login, cenario):
 def test_exige_usuario(client, cenario):
     r = client.get("/conferencia")
     assert r.status_code == 302
+
+
+def test_selecionar_empresas_exibe_so_as_escolhidas(login, cenario):
+    c = login("Natan")
+    alfa, beta = cenario["alfa"].id, cenario["beta"].id
+    html = c.get(f"/conferencia?competencia=2026-08&empresa={beta}").get_data(as_text=True)
+    assert 'aria-label="Beta Serviços"' in html and 'aria-label="Alfa Comércio"' not in html
+    # o seletor continua listando todas da carteira, com a escolhida marcada
+    assert f'name="empresa" value="{alfa}"' in html
+    assert re.search(rf'name="empresa" value="{beta}"\s+checked', html)
+    assert "Exibindo:" in html
+    # contadores refletem só a seleção
+    assert 'data-ok="1"' in html and 'data-pendentes="0"' in html
+    # várias empresas juntas (matriz + filial)
+    html = c.get(f"/conferencia?competencia=2026-08&empresa={alfa}&empresa={beta}").get_data(as_text=True)
+    assert 'aria-label="Beta Serviços"' in html and 'aria-label="Alfa Comércio"' in html
+    # Excel e PDF levam a seleção
+    assert f"empresa={alfa}" in html and "conferencia/excel" in html
+
+
+def test_selecao_de_outra_carteira_e_ignorada(login, cenario):
+    html = login("Natan").get("/conferencia?competencia=2026-08&empresa=99999").get_data(as_text=True)
+    assert 'aria-label="Alfa Comércio"' in html and 'aria-label="Beta Serviços"' in html
+    assert "Exibindo:" not in html
