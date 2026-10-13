@@ -149,6 +149,20 @@ def test_buscar_explica_os_erros(app, servidor):
 
 # ====================================================================== prévia
 
+def test_campo_em_branco_aqui_e_igual_a_zero_la(app, db, usuarios, tipos, empresas_teste):
+    """Canceladas nunca preenchidas aqui (NULL) e 0 / 0,00 no cruzamento não são diferença."""
+    a, _ = empresas_teste
+    natan = usuarios["Natan"]
+    svc_lanc.salvar_mes(a, COMP, [{"tipo_id": tipos["NFE_ENT"].id, "qtde_autor": "110", "valor_autor": "85587,39",
+                                   "qtde_canc": "", "valor_canc": ""}], natan)
+    db.session.commit()
+    dados = resposta(empresa_la(CNPJ_A, "MERCADINHO A",
+                                tipo("NF_ENTRADA_TODAS", aut=(110, "85587.39"), dominio=False)))
+    p = svc.montar_previa(dados, COMP, None, natan)
+    linha = next(l for l in p.linhas if l.chave == f"{a.id}:NFE_ENT")
+    assert linha.situacao == svc.SIT_IGUAL and not linha.marcada
+
+
 def test_previa_situacoes_por_linha(app, db, usuarios, tipos, empresas_teste):
     a, b = empresas_teste
     natan = usuarios["Natan"]

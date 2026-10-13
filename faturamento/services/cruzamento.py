@@ -149,8 +149,13 @@ class Numeros:
         return {"qtde_autor": self.qtde_autor, "valor_autor": self.valor_autor,
                 "qtde_canc": self.qtde_canc, "valor_canc": self.valor_canc}
 
+    def _comparavel(self) -> tuple:
+        # Campo em branco aqui equivale a zero lá: não é diferença (ex.: canceladas nunca preenchidas).
+        return (self.qtde_autor or 0, self.valor_autor or Decimal("0.00"),
+                self.qtde_canc or 0, self.valor_canc or Decimal("0.00"))
+
     def mesma_base(self, outro: "Numeros | None") -> bool:
-        return outro is not None and self.base() == outro.base()
+        return outro is not None and self._comparavel() == outro._comparavel()
 
     def mesmo_ajuste(self, outro: "Numeros | None") -> bool:
         if outro is None:
