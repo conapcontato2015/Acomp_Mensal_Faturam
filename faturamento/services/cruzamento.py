@@ -49,6 +49,7 @@ FONTE = "cruzamento"
 NOME_FONTE = "Cruzamento Domínio × SEFAZ"
 ROTA = "/api/trpc/faturamento.resumoMensal"
 VERSAO_API = 1
+USER_AGENT = "Mozilla/5.0 (compatible; Faturamento-CONAP)"
 
 # tipo lá -> código do tipo de documento aqui
 MAPA_TIPOS = {"NF_ENTRADA_TODAS": "NFE_ENT", "NF_SAIDA_TODAS": "NFE_SAI", "NFCE_AUTORIZADA": "NFCE"}
@@ -98,7 +99,9 @@ def buscar(comp: date, cnpj: str | None = None) -> dict:
     if cnpj:
         entrada["cnpj"] = so_digitos(cnpj)
     url = f"{cfg['CRUZAMENTO_URL']}{ROTA}?input={urllib.parse.quote(json.dumps({'json': entrada}))}"
-    headers = {"Authorization": f"Bearer {cfg['CRUZAMENTO_API_KEY']}", "Accept": "application/json"}
+    # O Cloudflare do Manus barra o User-Agent padrão do Python (erro 1010 / HTTP 403).
+    headers = {"Authorization": f"Bearer {cfg['CRUZAMENTO_API_KEY']}", "Accept": "application/json",
+               "User-Agent": USER_AGENT}
     try:
         status, corpo = _baixar(url, headers, int(cfg.get("CRUZAMENTO_TIMEOUT", 90)))
     except (urllib.error.URLError, TimeoutError, OSError) as exc:

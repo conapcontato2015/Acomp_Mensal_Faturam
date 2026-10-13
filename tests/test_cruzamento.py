@@ -67,7 +67,8 @@ def servidor(app):
         def do_GET(self):  # noqa: N802
             url = urllib.parse.urlparse(self.path)
             entrada = json.loads(urllib.parse.parse_qs(url.query)["input"][0])["json"]
-            estado.pedidos.append({"path": url.path, "input": entrada, "auth": self.headers.get("Authorization")})
+            estado.pedidos.append({"path": url.path, "input": entrada, "auth": self.headers.get("Authorization"),
+                                   "ua": self.headers.get("User-Agent")})
             if url.path != "/api/trpc/faturamento.resumoMensal":
                 self.send_response(404)
                 self.end_headers()
@@ -120,6 +121,8 @@ def test_buscar_le_o_envelope_trpc_com_a_chave(servidor):
     assert dados["empresas"][0]["cnpj"] == CNPJ_A
     assert servidor.pedidos[-1]["input"] == {"competencia": "2026-08"}
     assert servidor.pedidos[-1]["auth"] == f"Bearer {CHAVE}"
+    # Python-urllib é barrado pelo Cloudflare do Manus (403, erro 1010): precisa de User-Agent próprio
+    assert "urllib" not in servidor.pedidos[-1]["ua"]
     svc.buscar(COMP, cnpj="12.345.678/0001-90")
     assert servidor.pedidos[-1]["input"] == {"competencia": "2026-08", "cnpj": CNPJ_A}
 
