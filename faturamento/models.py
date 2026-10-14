@@ -107,7 +107,7 @@ class Empresa(db.Model):
     )
     historico_responsaveis: Mapped[list["EmpresaResponsavel"]] = relationship(
         back_populates="empresa", order_by="EmpresaResponsavel.inicio.desc(), EmpresaResponsavel.id.desc()",
-        cascade="all, delete-orphan",
+        cascade="all, delete-orphan", lazy="selectin",  # em lote: sem uma consulta por empresa nas listas
     )
 
     @property

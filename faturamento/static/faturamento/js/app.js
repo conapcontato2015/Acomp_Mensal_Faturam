@@ -84,17 +84,17 @@
           'px;border-radius:2px;background:' + CORES_CONFETE[i % CORES_CONFETE.length];
         caixa.appendChild(p);
         const ang = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.9;  // para cima, em leque
-        const vel = 120 + Math.random() * 220;
+        const vel = 160 + Math.random() * 260;
         const dx = Math.cos(ang) * vel, dy = Math.sin(ang) * vel;
-        const queda = 220 + Math.random() * 180;
+        const queda = 300 + Math.random() * 240;
         const giro = (Math.random() - 0.5) * 900;
         p.animate([
           { transform: 'translate(0,0) rotate(0deg)', opacity: 1, offset: 0 },
           { transform: 'translate(' + dx * 0.6 + 'px,' + dy * 0.6 + 'px) rotate(' + giro * 0.5 + 'deg)', opacity: 1, offset: 0.35 },
           { transform: 'translate(' + dx + 'px,' + (dy + queda) + 'px) rotate(' + giro + 'deg)', opacity: 0, offset: 1 },
-        ], { duration: 900 + Math.random() * 500, easing: 'cubic-bezier(.2,.7,.4,1)', fill: 'forwards' });
+        ], { duration: 2600 + Math.random() * 400, easing: 'cubic-bezier(.2,.7,.4,1)', fill: 'forwards' });
       }
-      setTimeout(() => caixa.remove(), 1600);
+      setTimeout(() => caixa.remove(), 3200);
     } catch (e) { /* enfeite: nunca atrapalha o trabalho */ }
   }
 
