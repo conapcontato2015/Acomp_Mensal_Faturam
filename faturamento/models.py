@@ -18,6 +18,15 @@ from .extensions import db
 
 ENTRADA = "E"
 SAIDA = "S"
+OUTROS = "O"  # não é entrada nem saída: fica fora dos totais de entradas/saídas e do gráfico (ex.: recebimento de caixa)
+
+# sentido -> (nome no singular, título do bloco, nome nos subtotais)
+SENTIDOS = {
+    ENTRADA: ("Entrada", "ENTRADAS", "entradas"),
+    SAIDA: ("Saída", "SAÍDAS", "saídas"),
+    OUTROS: ("Outros", "OUTROS", "outros"),
+}
+ORDEM_SENTIDOS = (ENTRADA, SAIDA, OUTROS)
 
 ORIGEM_MANUAL = "manual"
 ORIGEM_PLANILHA = "planilha"
@@ -66,13 +75,13 @@ class TipoDocumento(db.Model):
     codigo: Mapped[str] = mapped_column(String(30), unique=True)
     nome: Mapped[str] = mapped_column(String(60), unique=True)
     modelo: Mapped[str] = mapped_column(String(20))
-    sentido: Mapped[str] = mapped_column(String(1))  # E | S
+    sentido: Mapped[str] = mapped_column(String(1))  # E | S | O
     ordem: Mapped[int] = mapped_column(Integer, default=0)
     ativo: Mapped[bool] = mapped_column(Boolean, default=True)
 
     @property
     def sentido_nome(self) -> str:
-        return "Entrada" if self.sentido == ENTRADA else "Saída"
+        return SENTIDOS.get(self.sentido, SENTIDOS[SAIDA])[0]
 
 
 fat_empresa_tipo = db.Table(

@@ -73,9 +73,9 @@
 
   <fieldset style="border:1px solid var(--borda);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:12px;margin:0">
     <legend style="font-weight:600;color:var(--marinho);padding:0 6px">Tipos de documento usados</legend>
-    <span class="muted small">Só os tipos marcados aparecem no lançamento. Entradas e saídas nunca se somam.</span>
+    <span class="muted small">Só os tipos marcados aparecem no lançamento. Entradas e saídas nunca se somam; "Outros" fica fora dos dois totais. Precisa de um tipo novo? <a href="{{ url_for('faturamento.tipos_documento') }}">Cadastrar tipos de documento</a>.</span>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px">
-      {% for sentido, titulo in [('E', 'Entradas'), ('S', 'Saídas')] %}
+      {% for sentido, titulo in [('E', 'Entradas'), ('S', 'Saídas'), ('O', 'Outros')] %}
       <div role="group" aria-labelledby="grp-{{ sentido }}" style="display:flex;flex-direction:column;gap:8px">
         <span id="grp-{{ sentido }}" class="rotulo-campo" style="font-weight:600;letter-spacing:.04em;text-transform:uppercase">{{ titulo }}</span>
         {% for t in tipos if t.sentido == sentido %}

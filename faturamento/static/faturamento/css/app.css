@@ -112,6 +112,7 @@ label.campo > span, .rotulo-campo { font-size: 13px; color: var(--muted); }
 .tag { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 500; margin: 2px 4px 2px 0; }
 .tag.E { background: var(--marinho-claro); color: var(--marinho); }
 .tag.S { background: var(--laranja-claro); color: var(--laranja-texto); }
+.tag.O { background: #ECEEF3; color: #4A5470; }
 
 .aviso { display: flex; align-items: flex-start; gap: 10px; border-radius: 10px; padding: 12px 16px; font-size: 14px; }
 .aviso.info { background: var(--neutro-fundo); border: 1px solid #D5D9E2; color: var(--tinta-2); }

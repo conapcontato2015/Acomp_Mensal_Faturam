@@ -12,7 +12,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from ..models import ENTRADA
+from ..models import SENTIDOS
 from .resumo import CartaoEmpresa
 
 MARINHO = "202F5A"
@@ -41,7 +41,7 @@ def nome_arquivo_conferencia(comp: date) -> str:
 
 
 def _sentido_nome(s: str) -> str:
-    return "Entrada" if s == ENTRADA else "Saída"
+    return SENTIDOS.get(s, SENTIDOS["S"])[0]
 
 
 def planilha_conferencia(comp: date, cartoes: list[CartaoEmpresa]) -> bytes:
@@ -83,7 +83,7 @@ def planilha_conferencia(comp: date, cartoes: list[CartaoEmpresa]) -> bytes:
                 ])
                 formatar(ws.max_row)
             ws.append([
-                c.empresa.nome, resp, sentido, f"Subtotal {'entradas' if b.sentido == ENTRADA else 'saídas'}",
+                c.empresa.nome, resp, sentido, f"Subtotal {b.nome_subtotal}",
                 b.qtde_autor, b.valor_autor, b.qtde_canc, b.valor_canc,
                 sum(l.ajuste_qtde_autor for l in b.linhas), sum((l.ajuste_valor_autor for l in b.linhas), 0) or 0,
                 f"{sum(1 for l in b.linhas if l.bateu)} de {len(b.linhas)}",

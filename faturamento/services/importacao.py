@@ -209,7 +209,10 @@ class Previa:
             b = i.base()
             aq, av = i.ajuste(GRUPO_AUTOR)
             cq, cv = i.ajuste(GRUPO_CANC)
-            s = t[sentido.get(i.tipo_codigo, "S")]
+            s_codigo = sentido.get(i.tipo_codigo, "S")
+            if s_codigo not in t:  # "Outros" não entra nos totais de entradas/saídas
+                continue
+            s = t[s_codigo]
             s["qtde"] += (b["qtde_autor"] or 0) + aq
             s["valor"] += (b["valor_autor"] or 0) + av
             s["qtde_canc"] += (b["qtde_canc"] or 0) + cq

@@ -13,13 +13,14 @@ from flask import abort, current_app, flash, redirect, render_template, request,
 from .. import bp
 from ..extensions import db
 from ..identidade import definir_usuario, exigir_usuario, modo_local, sair, usuario_atual
-from ..models import MOTIVOS_AJUSTE, Empresa, Usuario
+from ..models import MOTIVOS_AJUSTE, SENTIDOS, Empresa, TipoDocumento, Usuario
 from ..services import RegraViolada
 from ..services import auditoria as aud
 from ..services import empresas as svc_emp
 from ..services import fechamento as svc_fech
 from ..services import lancamentos as svc_lanc
 from ..services import resumo as svc_res
+from ..services import tipos as svc_tipos
 from ..util import (
     ValorInvalido, competencia, competencia_atual, competencia_padrao, fmt_inteiro, fmt_moeda, somar_meses,
 )
@@ -284,6 +285,36 @@ def empresa_form(eid: int | None = None):
         inicio_padrao=competencia_padrao(), competencias=_competencias_para_seletor(competencia_padrao()),
         historico=historico,
     )
+
+
+# ------------------------------------------------------------------ tipos de documento
+
+@bp.route("/tipos-documento", methods=["GET", "POST"])
+@exigir_usuario
+def tipos_documento():
+    """Qualquer usuário cadastra e edita tipos. Tipo nunca é excluído: só inativado."""
+    if request.method == "POST":
+        f = request.form
+        try:
+            if f.get("tipo_id"):
+                tipo = db.session.get(TipoDocumento, f.get("tipo_id", type=int) or 0) or abort(404)
+                svc_tipos.atualizar(tipo, usuario_atual(), nome=f.get("nome", ""), sentido=f.get("sentido"),
+                                    modelo=f.get("modelo", ""), ordem=f.get("ordem"), ativo=f.get("ativo") == "1")
+                msg = f"{tipo.nome} salvo."
+            else:
+                tipo = svc_tipos.criar(f.get("nome", ""), f.get("sentido"), usuario_atual(),
+                                       modelo=f.get("modelo"), ordem=f.get("ordem"))
+                msg = f"{tipo.nome} criado. Marque-o nas empresas que o usam."
+            db.session.commit()
+            flash(msg, "sucesso")
+            return redirect(url_for("faturamento.tipos_documento"))
+        except RegraViolada as exc:
+            db.session.rollback()
+            for m in exc.mensagens:
+                flash(m, "erro")
+    lista = svc_tipos.listar()
+    return render_template("faturamento/tipos_documento.html", tipos=lista,
+                           uso={t.id: svc_tipos.uso(t) for t in lista}, sentidos=SENTIDOS)
 
 
 # ------------------------------------------------------------------ histórico

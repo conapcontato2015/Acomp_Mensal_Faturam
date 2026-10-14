@@ -13,7 +13,7 @@ from flask import current_app
 from sqlalchemy import select
 
 from ..extensions import db
-from ..models import ENTRADA, SAIDA, Empresa, Fechamento, Lancamento
+from ..models import ENTRADA, ORDEM_SENTIDOS, SAIDA, SENTIDOS, Empresa, Fechamento, Lancamento
 from ..util import comp_rotulo, somar_meses
 from .empresas import listar_empresas, responsavel_em
 from .fechamento import status_mes
@@ -28,7 +28,11 @@ class Bloco:
 
     @property
     def titulo(self) -> str:
-        return "ENTRADAS" if self.sentido == ENTRADA else "SAÍDAS"
+        return SENTIDOS[self.sentido][1]
+
+    @property
+    def nome_subtotal(self) -> str:
+        return SENTIDOS[self.sentido][2]
 
     @property
     def qtde_autor(self) -> int:
@@ -99,7 +103,7 @@ def conferencia(comp: date, responsavel_id: int | None, *, sentido: str | None =
         lancs = [l for l in por_emp.get(e.id, []) if l.tem_movimento]
         if not lancs:
             continue
-        if sentido in (ENTRADA, SAIDA):
+        if sentido in SENTIDOS:
             lancs = [l for l in lancs if l.tipo.sentido == sentido]
         if situacao == "pendentes":
             lancs = [l for l in lancs if not l.bateu]
@@ -109,7 +113,7 @@ def conferencia(comp: date, responsavel_id: int | None, *, sentido: str | None =
             continue
         lancs.sort(key=lambda l: l.tipo.ordem)
         blocos = []
-        for s in (ENTRADA, SAIDA):
+        for s in ORDEM_SENTIDOS:
             ls = [l for l in lancs if l.tipo.sentido == s]
             if ls:
                 blocos.append(Bloco(s, ls))
@@ -200,6 +204,8 @@ def evolucao(empresa: Empresa, ate: date, meses: int = 8) -> list[dict]:
     q = select(Lancamento).where(Lancamento.empresa_id == empresa.id, Lancamento.competencia >= de, Lancamento.competencia <= ate)
     for l in db.session.scalars(q):
         s = l.tipo.sentido
+        if s not in ("E", "S"):  # "Outros" (ex.: recebimento de caixa) não entra no gráfico
+            continue
         serie[l.competencia][s] += Decimal(l.valor_autor or 0)
         serie[l.competencia][s + "_aj"] += l.ajuste_valor_autor
     return [{"competencia": c, "rotulo": comp_rotulo(c), "entradas": v["E"], "entradas_ajuste": v["E_aj"],

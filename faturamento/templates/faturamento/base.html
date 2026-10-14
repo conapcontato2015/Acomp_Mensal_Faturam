@@ -25,6 +25,8 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/><path d="M17 17l2 2 3-4"/></svg>Conferência</a>
       <a href="{{ url_for('faturamento.empresas') }}" class="{{ 'on' if pagina in ('faturamento.empresas', 'faturamento.empresa_form', 'faturamento.importar_responsaveis', 'faturamento.importar_responsaveis_confirmar') }}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 21V7l8-4 8 4v14"/><path d="M9 21v-6h6v6"/></svg>Empresas</a>
+      <a href="{{ url_for('faturamento.tipos_documento') }}" class="{{ 'on' if pagina == 'faturamento.tipos_documento' }}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 4h10l4 4v12H5z"/><path d="M14 4v5h5M9 13h6M9 17h6"/></svg>Tipos de documento</a>
       <a href="{{ url_for('faturamento.importacao') }}" class="{{ 'on' if pagina and pagina.startswith('faturamento.importacao') }}">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M4 21h16"/></svg>Importar planilha</a>
       <a href="{{ url_for('faturamento.historico') }}" class="{{ 'on' if pagina == 'faturamento.historico' }}">

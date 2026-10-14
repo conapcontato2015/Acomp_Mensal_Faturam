@@ -14,7 +14,7 @@ Escritas aceitam `"substituto": true` para lançar na carteira de outra pessoa.
 | GET | `/sessao` | Usuário atual e modo de autenticação |
 | POST | `/sessao` | `{usuario_id}` — define o usuário (só modo local) |
 | GET | `/usuarios` | Usuários ativos |
-| GET | `/tipos-documento` | Tipos com `sentido` E/S |
+| GET | `/tipos-documento` | Tipos com `sentido` E (entrada), S (saída) ou O (outros: fora dos totais e do gráfico). Cadastro pela tela "Tipos de documento" |
 | GET | `/empresas?responsavel=&competencia=&incluir_inativas=&busca=` | Empresas (com responsável e histórico) |
 | POST | `/empresas` | `{nome, cnpj, responsavel_id, tipos:[ids]}` |
 | GET/PUT | `/empresas/<id>` | Detalhe / `{nome, cnpj, ativa, tipos}` |

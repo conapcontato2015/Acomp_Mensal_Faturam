@@ -92,7 +92,7 @@
           </tr>
           {% endfor %}
           <tr class="sub">
-            <td>Subtotal {{ 'entradas' if b.sentido == 'E' else 'saídas' }}</td>
+            <td>Subtotal {{ b.nome_subtotal }}</td>
             <td>{{ b.qtde_autor|inteiro }}</td>
             <td>{{ b.valor_autor|moeda }}</td>
             <td>{{ b.qtde_canc|inteiro if b.qtde_canc else '—' }}</td>

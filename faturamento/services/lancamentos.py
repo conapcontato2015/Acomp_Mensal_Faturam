@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from ..extensions import db
 from ..models import (
-    GRUPO_AUTOR, GRUPO_CANC, MOTIVO_PADRAO_AJUSTE, STATUS_SEM_MOVIMENTO, Ajuste, Empresa,
+    GRUPO_AUTOR, GRUPO_CANC, MOTIVO_PADRAO_AJUSTE, ORDEM_SENTIDOS, STATUS_SEM_MOVIMENTO, Ajuste, Empresa,
     Fechamento, Lancamento, TipoDocumento, Usuario, agora,
 )
 from ..util import ValorInvalido, competencia_atual, comp_curta, fmt_moeda, parse_decimal, parse_inteiro
@@ -59,7 +59,7 @@ def tipos_do_mes(empresa: Empresa, comp: date, lancs: dict[int, Lancamento] | No
     tipos = {t.id: t for t in empresa.tipos}
     for l in lancs.values():
         tipos.setdefault(l.tipo_id, l.tipo)
-    return sorted(tipos.values(), key=lambda t: (t.sentido != "E", t.ordem))
+    return sorted(tipos.values(), key=lambda t: (ORDEM_SENTIDOS.index(t.sentido) if t.sentido in ORDEM_SENTIDOS else 9, t.ordem))
 
 
 @dataclass

@@ -78,8 +78,10 @@
       const temC = r.qc !== null || aj.some(a => a.grupo === 'CANC');
       tr.querySelector('[data-total="autor"]').textContent = temA ? inteiro(tqa) + ' · ' + moeda(tva) : '—';
       tr.querySelector('[data-total="canc"]').textContent = temC ? inteiro(tqc) + ' · ' + moeda(tvc) : '—';
-      if (tr.dataset.sentido === 'E') ent += tva || 0; else sai += tva || 0;
-      canc += tvc || 0;
+      // 'O' (outros, ex.: recebimento de caixa) não entra nos totais de entradas, saídas e canceladas
+      if (tr.dataset.sentido === 'E') ent += tva || 0;
+      else if (tr.dataset.sentido === 'S') sai += tva || 0;
+      if (tr.dataset.sentido !== 'O') canc += tvc || 0;
       if (temA || temC) { comMov++; if (tr.dataset.bateu === '1') ok++; }
       ['AUTOR', 'CANC'].forEach(g => {
         const b = tr.querySelector(`.btn-ajuste[data-grupo="${g}"]`);

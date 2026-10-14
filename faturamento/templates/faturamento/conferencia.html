@@ -227,7 +227,7 @@
         {% endfor %}
         <div class="ln det sub" role="row">
           <span></span>
-          <span role="cell">Subtotal {{ 'entradas' if b.sentido == 'E' else 'saídas' }}</span>
+          <span role="cell">Subtotal {{ b.nome_subtotal }}</span>
           <span role="cell" class="num">{{ b.qtde_autor|inteiro }}</span>
           <span role="cell" class="num">{{ b.valor_autor|moeda }}</span>
           <span role="cell" class="num">{{ b.qtde_canc|inteiro if b.qtde_canc else '—' }}</span>
