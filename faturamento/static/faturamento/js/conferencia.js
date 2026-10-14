@@ -61,6 +61,7 @@
     atualizarResumo(antes, pintarCartao(card));
     try {
       await chamada();
+      if (!antes.tudo && estado(card).tudo && FAT.confete) FAT.confete(card.querySelector('.veredito') || card);
     } catch (err) {
       const meio = estado(card);
       anteriores.forEach(([id, on]) => aplicarLinha(card, id, on));

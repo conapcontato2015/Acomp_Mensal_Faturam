@@ -64,6 +64,8 @@
     return { ok: !erro, qa, va, qc, vc };
   }
 
+  let ultimo = { ok: 0, comMov: 0 };
+
   function recalcular() {
     let ent = 0, sai = 0, canc = 0, ok = 0, comMov = 0;
     linhas.forEach(tr => {
@@ -96,6 +98,7 @@
         }
       });
     });
+    ultimo = { ok, comMov };
     document.getElementById('t-ent').textContent = moeda(ent);
     document.getElementById('t-sai').textContent = moeda(sai);
     document.getElementById('t-canc').textContent = moeda(canc);
@@ -171,6 +174,8 @@
       tr.dataset.bateu = chk.checked ? '1' : '0';
       aplicarTrava(); recalcular();
       aviso(chk.checked ? `${tr.dataset.tipo}: bateu.` : `${tr.dataset.tipo}: voltou para "a conferir".`);
+      // parabéns: última linha da empresa no mês acabou de bater
+      if (chk.checked && ultimo.comMov > 0 && ultimo.ok === ultimo.comMov && window.FAT && FAT.confete) FAT.confete(chk);
     } catch (e) { chk.checked = !chk.checked; aviso(e.message, 'erro'); }
   }));
 
@@ -231,7 +236,7 @@
       const a = r.ajuste;
       (ajustes[atual.tipoId] = ajustes[atual.tipoId] || []).push({
         id: a.id, grupo: a.grupo, qtde: a.qtde, valor: a.valor, motivo: a.motivo, observacao: a.observacao || '',
-        por: a.criado_por ? a.criado_por.nome : '', em: new Date().toLocaleDateString('pt-BR'),
+        por: a.criado_por ? a.criado_por.nome : '', em: new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' }),
       });
       const tr = form.querySelector(`tr.linha[data-tipo-id="${atual.tipoId}"]`);
       if (r.lancamento && r.lancamento.id) tr.dataset.lancId = r.lancamento.id;

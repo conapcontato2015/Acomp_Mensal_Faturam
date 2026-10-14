@@ -1,10 +1,12 @@
 """Conversões no formato brasileiro e utilidades de competência."""
 from __future__ import annotations
 
+import os
 import re
 import unicodedata
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
          "agosto", "setembro", "outubro", "novembro", "dezembro"]
@@ -13,6 +15,41 @@ MESES_CURTOS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "
 
 class ValorInvalido(ValueError):
     pass
+
+
+def _carregar_fuso():
+    """Fuso do escritório (Fortaleza-CE, UTC-3 fixo). Troca por FUSO_HORARIO no .env."""
+    nome = os.getenv("FUSO_HORARIO", "America/Fortaleza")
+    try:
+        return ZoneInfo(nome)
+    except (ZoneInfoNotFoundError, ValueError, OSError):
+        return timezone(timedelta(hours=-3), "America/Fortaleza")  # sem tzdata instalado
+
+
+FUSO = _carregar_fuso()
+
+
+def agora() -> datetime:
+    """Data/hora de Fortaleza (sem fuso embutido), igual em qualquer máquina: PC, servidor ou Docker."""
+    return datetime.now(FUSO).replace(tzinfo=None)
+
+
+def hoje() -> date:
+    return agora().date()
+
+
+def utc_para_local(texto, vazio: str = "—") -> str:
+    """'2026-09-05T12:00:00.000Z' (UTC) -> '05/09/2026 09:00' no fuso de Fortaleza."""
+    t = str(texto or "").strip()
+    if not t:
+        return vazio
+    try:
+        dt = datetime.fromisoformat(t.replace("Z", "+00:00"))
+    except ValueError:
+        return t
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(FUSO).strftime("%d/%m/%Y %H:%M")
 
 
 MAX_DIGITOS_INTEIROS = 13          # NUMERIC(15,2): 13 dígitos antes da vírgula
@@ -122,8 +159,8 @@ def competencia(valor) -> date:
 
 
 def competencia_atual() -> date:
-    hoje = date.today()
-    return date(hoje.year, hoje.month, 1)
+    d = hoje()
+    return date(d.year, d.month, 1)
 
 
 def competencia_padrao() -> date:

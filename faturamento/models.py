@@ -15,6 +15,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .extensions import db
+from .util import agora as _agora_local
 
 ENTRADA = "E"
 SAIDA = "S"
@@ -52,7 +53,7 @@ MOTIVOS_AJUSTE = [
 
 
 def agora() -> datetime:
-    return datetime.now()
+    return _agora_local()  # hora de Fortaleza, não a do sistema operacional
 
 
 class Usuario(db.Model):

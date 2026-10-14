@@ -6,6 +6,8 @@ import sqlite3
 from datetime import date
 from pathlib import Path
 
+from ..util import hoje as util_hoje
+
 
 def caminho_sqlite(uri: str) -> Path | None:
     if not uri.startswith("sqlite:///"):
@@ -22,7 +24,7 @@ def backup_diario(uri: str, pasta: Path, manter_dias: int = 30, hoje: date | Non
     if origem is None:
         return None
     pasta.mkdir(parents=True, exist_ok=True)
-    hoje = hoje or date.today()
+    hoje = hoje or util_hoje()
     destino = pasta / f"faturamento-{hoje:%Y%m%d}.db"
     if not destino.exists():
         # API de backup do SQLite: cópia consistente mesmo com o sistema aberto.

@@ -1,7 +1,7 @@
 """Tela de conferência (relatório SEFAZ com ajustes × sistema contábil) e exportações."""
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 
 from flask import Response, render_template, request
 
@@ -12,7 +12,7 @@ from ..services import empresas as svc_emp
 from ..services import exportacao as svc_exp
 from ..services import lancamentos as svc_lanc
 from ..services import resumo as svc_res
-from ..util import fmt_inteiro, fmt_moeda
+from ..util import agora, fmt_inteiro, fmt_moeda
 from .routes import _carteira, _comp, _competencias_para_seletor
 
 
@@ -120,5 +120,5 @@ def conferencia_imprimir():
     return render_template(
         "faturamento/conferencia_impressao.html", comp=comp, carteira=carteira,
         cartoes=dados["cartoes"], progresso=dados["progresso"], nome_carteira=_nome_carteira(resp_id),
-        gerado_em=datetime.now(), dica_ajuste=_dica_ajuste, ajuste_curto=_ajuste_curto,
+        gerado_em=agora(), dica_ajuste=_dica_ajuste, ajuste_curto=_ajuste_curto,
     )

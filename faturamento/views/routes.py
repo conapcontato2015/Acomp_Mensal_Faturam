@@ -22,7 +22,7 @@ from ..services import lancamentos as svc_lanc
 from ..services import resumo as svc_res
 from ..services import tipos as svc_tipos
 from ..util import (
-    ValorInvalido, competencia, competencia_atual, competencia_padrao, fmt_inteiro, fmt_moeda, somar_meses,
+    ValorInvalido, utc_para_local, competencia, competencia_atual, competencia_padrao, fmt_inteiro, fmt_moeda, somar_meses,
 )
 
 
@@ -331,6 +331,12 @@ def chave_oculta(chave) -> bool:
     """Chaves internas que não interessam a quem lê o histórico (listas de ids etc.)."""
     k = str(chave)
     return k.endswith("_ids") or k.startswith("_") or k in ("marcas",)
+
+
+@bp.app_template_filter("hora_br")
+def hora_br(v) -> str:
+    """Horário UTC do cruzamento -> dd/mm/aaaa hh:mm de Fortaleza."""
+    return utc_para_local(v)
 
 
 @bp.app_template_filter("hist")

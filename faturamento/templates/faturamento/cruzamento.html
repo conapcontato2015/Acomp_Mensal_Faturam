@@ -77,7 +77,7 @@
   </div>
   {% endif %}
 
-  <span class="muted small">Lido do cruzamento em {{ previa.obtido_em[:16]|replace('T', ' ') }} (UTC) · nada foi gravado ainda.</span>
+  <span class="muted small">Lido do cruzamento em {{ previa.obtido_em|hora_br }} · nada foi gravado ainda.</span>
 
   {% for ep in previa.empresas %}
   <section class="cartao" aria-label="{{ ep.empresa.nome }}">
