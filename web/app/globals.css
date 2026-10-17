@@ -189,6 +189,44 @@
   .barra { height: 8px; border-radius: 999px; background: var(--bg-soft); overflow: hidden; }
   .barra > span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--brand), var(--brand-2)); transition: width .3s ease; }
 
+  /* ---- grade de lançamento (células como no Excel) */
+  .celula {
+    width: 100%; min-width: 84px; height: 34px; padding: 4px 8px; border-radius: 8px; border: 1px solid transparent;
+    background: var(--surface-2); color: var(--ink); font-size: 14px; text-align: right; font-variant-numeric: tabular-nums;
+  }
+  .celula:hover { border-color: var(--line); }
+  .celula:focus { outline: none; border-color: var(--brand); background: var(--surface); box-shadow: 0 0 0 3px var(--brand-soft); }
+  .celula[readonly] { background: transparent; color: var(--ink-2); cursor: default; }
+  .celula[aria-invalid="true"] { border-color: var(--danger); background: var(--danger-soft); }
+  .tabela tr.sentido td {
+    background: var(--bg-soft); font-size: 11.5px; font-weight: 700; letter-spacing: .05em; color: var(--ink-2); padding: 6px 14px;
+  }
+  .tabela tr.travada td { background: color-mix(in srgb, var(--ok-soft) 55%, transparent); }
+  .btn-ajuste {
+    min-height: 30px; padding: 3px 10px; border-radius: 8px; border: 1px dashed var(--line-strong); background: transparent;
+    color: var(--ink-3); font-size: 12.5px; white-space: nowrap; cursor: pointer; font-variant-numeric: tabular-nums;
+  }
+  .btn-ajuste:hover { border-color: var(--brand); color: var(--brand); }
+  .btn-ajuste[data-tem="true"] { border-style: solid; border-color: var(--brand); background: var(--brand-soft); color: var(--ink); font-weight: 600; }
+
+  /* ---- janela (dialog nativo) */
+  .janela {
+    position: fixed; inset: 0; margin: auto; height: fit-content;
+    width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 1px solid var(--line);
+    border-radius: var(--radius-lg); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-md);
+  }
+  .janela::backdrop { background: rgb(21 20 15 / .45); }
+
+  /* ---- gráfico de barras do lançamento */
+  .grafico { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 10px; align-items: end; }
+  .grafico .mes { display: flex; justify-content: center; align-items: flex-end; gap: 4px; }
+  .grafico .coluna { width: min(22px, 40%); display: flex; flex-direction: column; justify-content: flex-end; }
+  .grafico .seg:first-child { border-radius: 5px 5px 0 0; }
+  .grafico-rotulos { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 10px; text-align: center; font-size: 12px; color: var(--ink-3); }
+  .grafico-rotulos .atual { color: var(--ink); font-weight: 600; }
+  .legenda { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; color: var(--ink-2); }
+  .legenda i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
   .vazio { padding: 40px 20px; text-align: center; color: var(--ink-3); }
   .rolagem { overflow-x: auto; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }

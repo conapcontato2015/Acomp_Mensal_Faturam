@@ -12,7 +12,7 @@ PASTA = Path(__file__).resolve().parents[2] / "web" / "out"
 TELAS = ["", "lancamento", "conferencia", "conferencia/imprimir", "empresas", "empresas/editar",
          "empresas/responsaveis", "empresas/controle-fiscal", "empresas/plataforma", "tipos-documento",
          "importacao", "importacao/cruzamento", "historico"]
-PRONTAS = {""}  # telas já migradas; as demais entram a cada lote
+PRONTAS = {"", "lancamento"}  # telas já migradas; as demais entram a cada lote
 
 
 @pytest.mark.parametrize("tela", sorted(PRONTAS))
