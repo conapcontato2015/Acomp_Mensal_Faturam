@@ -22,7 +22,8 @@ A cada alteração pedida:
    python -m pytest -q
    ```
    Se mudou `faturamento/models.py`, gerar a migração (`python -m faturamento.migracoes revision -m "..."`) e conferir
-   com `python -m faturamento.migracoes check`.
+   com `python -m faturamento.migracoes check`. Se a migração nova cria tabela, acrescentar
+   `(revisão, tabela)` em `MARCOS_MIGRACOES` (`faturamento/bootstrap.py`) — é o que reconhece bancos antigos sem registro de versão.
    Se mudou algo em `web/`: `cd web && npm run check && npm run build` e **commitar `web/out`** junto (o PC do
    usuário não tem Node; o `servidor.py` serve as telas já compiladas). Nunca commitar `web/node_modules` nem `web/.next`.
 4. **Commitar** na `claude/trabalho` com mensagem em português, curta, dizendo o que mudou e por quê.

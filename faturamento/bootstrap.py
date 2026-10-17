@@ -50,10 +50,51 @@ def config_alembic(url: str | None = None):
     return cfg
 
 
+# Tabela que cada migração criou: serve para reconhecer até onde um banco sem registro de versão chegou.
+# Ao criar migração nova que cria tabela, acrescente aqui (na ordem).
+MARCOS_MIGRACOES = [
+    ("f276d432fc3e", "fat_empresa"),       # estrutura inicial
+    ("98eb04af4a73", "fat_fonte_versao"),  # versões do cruzamento
+]
+
+
+def adotar_banco_sem_versao(url: str | None = None) -> str | None:
+    """Banco com as tabelas ``fat_*`` mas sem o registro do Alembic (``alembic_version``).
+
+    Acontecia com bancos criados pela versão Flask antiga com SQLAlchemy 2.1: as tabelas eram criadas, mas o
+    registro da versão não era gravado — e o próximo início tentava criar tudo de novo ("table already exists").
+    Aqui o banco é marcado na última migração cujas tabelas já existem; o ``upgrade`` aplica só o que faltar.
+    Devolve a revisão marcada (ou None se não precisou).
+    """
+    from alembic import command
+    from sqlalchemy import create_engine, inspect, text
+    from sqlalchemy.pool import NullPool
+
+    from .config import config
+
+    engine = create_engine(url or config["SQLALCHEMY_DATABASE_URI"], poolclass=NullPool)
+    try:
+        with engine.connect() as con:
+            tabelas = set(inspect(con).get_table_names())
+            if "alembic_version" in tabelas and con.execute(text("SELECT COUNT(*) FROM alembic_version")).scalar():
+                return None
+    finally:
+        engine.dispose()
+    revisao = None
+    for rev, tabela in MARCOS_MIGRACOES:
+        if tabela not in tabelas:
+            break
+        revisao = rev
+    if revisao is not None:
+        command.stamp(config_alembic(url), revisao)
+    return revisao
+
+
 def migrar(url: str | None = None) -> None:
     """Aplica as migrações pendentes (Alembic) no banco ativo."""
     from alembic import command
 
+    adotar_banco_sem_versao(url)
     command.upgrade(config_alembic(url), "head")
 
 
