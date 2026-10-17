@@ -30,3 +30,15 @@ def test_servidor_serve_telas_e_redireciona_a_raiz():
         r = c.get("/ferramentas/faturamento/")
         assert r.status_code == 200 and "Faturamento" in r.text
         assert c.get("/api/faturamento/saude").status_code == 200
+
+
+def test_telas_nao_usam_minha_ou_eu_junto_do_nome():
+    """O nome da pessoa aparece sozinho ("Natan"), nunca "Natan (minha)", "Minha carteira" ou "(eu)"."""
+    import re
+
+    fontes = Path(__file__).resolve().parents[2] / "web"
+    proibido = re.compile(r"\(minha\)|\(eu\)|\(meu\)|Minha carteira|Sua carteira|empresa sua", re.I)
+    achados = [f"{p.relative_to(fontes)}: {m.group(0)}"
+               for pasta in ("app", "components", "lib") for p in (fontes / pasta).rglob("*.ts*")
+               for m in proibido.finditer(p.read_text(encoding="utf-8"))]
+    assert not achados, achados

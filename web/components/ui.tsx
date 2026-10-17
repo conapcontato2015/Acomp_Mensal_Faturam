@@ -37,7 +37,7 @@ export function SeletorCarteira({ valor, usuarios, eu, onChange, rotulo = "Carte
     <label className="campo min-w-[170px]">
       <span>{rotulo}</span>
       <select className="entrada" value={valor} onChange={(e) => onChange(e.target.value)}>
-        {usuarios.map((u) => <option key={u.id} value={String(u.id)}>{u.nome}{eu && u.id === eu.id ? " (minha)" : ""}</option>)}
+        {usuarios.map((u) => <option key={u.id} value={String(u.id)}>{u.nome}</option>)}
         <option value="todos">Todos</option>
       </select>
     </label>

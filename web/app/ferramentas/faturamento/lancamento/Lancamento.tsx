@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAviso } from "@/components/Avisos";
 import { Icone } from "@/components/Icone";
 import { Janela } from "@/components/Janela";
+import { useSessao } from "@/components/Sessao";
 import { AvisoLeitura, Cabecalho, CaixaErro, Carregando, Grupo, Metrica, PilulaStatus, SeletorCompetencia } from "@/components/ui";
 import { api, ErroApi, qs } from "@/lib/api";
 import { confete } from "@/lib/confete";
@@ -32,6 +33,8 @@ export function Lancamento() {
 
 function EscolherEmpresa({ competencia }: { competencia: string }) {
   const f = useFiltros();
+  const { usuario } = useSessao();
+  const nome = usuario?.nome ?? "";
   const ref = useDados<Referencias>(`/referencias${qs({ competencia })}`);
   const ini = useDados<RespInicio>(`/lancamento/inicio${qs({ competencia })}`);
   const [busca, setBusca] = useState("");
@@ -62,7 +65,7 @@ function EscolherEmpresa({ competencia }: { competencia: string }) {
               <span className="pb-2 text-[13px] text-[var(--ink-3)]">{unica ? "Enter abre a empresa encontrada." : `${minhas.length + outras.length} empresa(s)`}</span>
             </div>
             <div className="grid gap-4 lg:grid-cols-2">
-              <Grupo titulo={`Minha carteira em ${d.competencia.curta}`}>
+              <Grupo titulo={`Carteira de ${nome} em ${d.competencia.curta}`}>
                 {minhas.length ? (
                   <ul className="divide-y divide-[var(--line)]">
                     {minhas.map((e) => (
@@ -75,7 +78,7 @@ function EscolherEmpresa({ competencia }: { competencia: string }) {
                       </li>
                     ))}
                   </ul>
-                ) : <div className="vazio">{termo ? "Nenhuma empresa sua com esse nome." : "Sua carteira está vazia neste mês."}</div>}
+                ) : <div className="vazio">{termo ? `Nenhuma empresa da carteira de ${nome} com esse nome.` : `Carteira de ${nome} vazia neste mês.`}</div>}
               </Grupo>
               <Grupo titulo="Outras carteiras" acoes={<span className="badge">somente leitura</span>}>
                 {outras.length ? (
@@ -161,6 +164,7 @@ const somaAj = (aj: Ajuste[], grupo: "AUTOR" | "CANC", campo: "qtde" | "valor") 
 
 function Editor({ inicial, refs }: { inicial: RespLancamento; refs: Referencias }) {
   const f = useFiltros();
+  const { usuario } = useSessao();
   const avisar = useAviso();
   const d = inicial;
   const comp = d.competencia.valor;
@@ -298,7 +302,7 @@ function Editor({ inicial, refs }: { inicial: RespLancamento; refs: Referencias 
             <label className="campo min-w-[260px]">
               <span>Empresa</span>
               <select className="entrada" value={d.empresa.id} onChange={(e) => trocarEmpresa({ empresa: e.target.value })}>
-                {d.minhas.length ? <optgroup label="Minha carteira">{d.minhas.map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}</optgroup> : null}
+                {d.minhas.length ? <optgroup label={`Carteira de ${usuario?.nome ?? ""}`}>{d.minhas.map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}</optgroup> : null}
                 <optgroup label="Outras carteiras (somente leitura)">{d.outras.map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}</optgroup>
               </select>
             </label>
