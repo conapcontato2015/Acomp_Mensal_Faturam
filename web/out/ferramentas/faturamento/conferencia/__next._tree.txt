@@ -1,0 +1,7 @@
+:HL["/_next/static/chunks/3fv9yqe3jlnk5.css","style"]
+:HC["/",""]
+4:[["children",{"s":"__PAGE__","h":160}]]
+3:[["children",{"s":"conferencia","h":96,"c":"$Q4"}]]
+2:[["children",{"s":"faturamento","h":96,"c":"$Q3"}]]
+1:[["children",{"s":"ferramentas","h":96,"c":"$Q2"}]]
+0:{"b":"cWKWS1lqGxK5NuivOVo2G","t":{"t":{"s":"","h":80,"c":"$Q1"}}}

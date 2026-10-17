@@ -28,6 +28,8 @@ export function Casca({ children }: { children: React.ReactNode }) {
   // A competência escolhida acompanha a navegação entre as seções.
   const comp = sp.get("competencia");
   const link = (caminho: string) => `${BASE}/${caminho ? caminho + "/" : ""}${comp ? `?competencia=${comp}` : ""}`;
+  // Folhas de impressão (…/imprimir/) aparecem sozinhas, sem o menu lateral.
+  if (/\/imprimir\/?$/.test(pathname)) return <main className="px-4 py-5 sm:px-6 print:p-0" id="conteudo">{children}</main>;
   return (
     <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-5 px-4 py-5 sm:px-6 lg:flex-row lg:gap-8">
       <aside className="nao-imprimir lg:w-[232px] lg:shrink-0">

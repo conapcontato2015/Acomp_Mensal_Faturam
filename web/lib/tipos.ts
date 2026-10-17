@@ -55,3 +55,19 @@ export interface Linha {
 
 export const ROTULO_STATUS: Record<Status, string> = { pendente: "Pendente", preenchido: "Preenchido", sem_movimento: "Sem movimento" };
 export const CLASSE_STATUS: Record<Status, string> = { pendente: "badge-warn", preenchido: "badge-ok", sem_movimento: "" };
+
+export interface BlocoConferencia {
+  sentido: Sentido; titulo: string; nomeSubtotal: string;
+  subtotal: { qtdeAutor: number; valorAutor: Dinheiro; qtdeCanc: number; valorCanc: Dinheiro };
+  linhas: Linha[];
+}
+export interface CartaoConferencia {
+  empresa: EmpresaResumo; responsavel: string | null; podeEditar: boolean;
+  total: number; bateram: number; faltam: number; tudoBateu: boolean; blocos: BlocoConferencia[];
+}
+export interface ProgressoConferencia { linhas: number; bateram: number; percentual: number; empresasOk: number; empresasPendentes: number }
+export interface RespConferencia {
+  competencia: Competencia; carteira: string; nomeCarteira: string; vista: "todas" | "pendencia"; somenteLeitura: boolean;
+  progresso: ProgressoConferencia; opcoes: { id: Id; nome: string }[]; escolhidas: Id[]; haLancamentos: boolean;
+  geradoEm: string; cartoes: CartaoConferencia[];
+}
