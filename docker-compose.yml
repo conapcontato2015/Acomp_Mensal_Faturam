@@ -22,7 +22,7 @@ services:
     environment:
       DATABASE_URL: postgresql://faturamento:troque-esta-senha@banco:5432/conap
       SECRET_KEY: troque-por-um-texto-longo-e-aleatorio
-      MODO_AUTH: local   # em produção: plataforma (usuário vem do cabeçalho de login)
+      MODO_AUTH: local   # no Conap Ferramentas: plataforma (usuário vem do JWT do login da plataforma)
     ports:
       - "8000:8000"
     volumes:

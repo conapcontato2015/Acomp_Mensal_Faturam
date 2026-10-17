@@ -6,6 +6,7 @@ from pathlib import Path
 
 from faturamento import util
 
+WEB = Path(__file__).resolve().parent.parent / "web"
 RAIZ = Path(__file__).resolve().parent.parent / "faturamento"
 
 
@@ -32,14 +33,14 @@ def test_utc_para_local_em_formato_brasileiro():
     assert util.utc_para_local("sem data") == "sem data"
 
 
-def test_tela_do_cruzamento_nao_mostra_mais_utc():
-    html = (RAIZ / "templates/faturamento/cruzamento.html").read_text(encoding="utf-8")
-    assert "|hora_br" in html and "(UTC)" not in html
+def test_tela_do_cruzamento_mostra_hora_local():
+    tela = (WEB / "app/ferramentas/faturamento/importacao/cruzamento/Cruzamento.tsx").read_text(encoding="utf-8")
+    assert "obtidoEmLocal" in tela and "UTC" not in tela
 
 
 def test_confete_ligado_na_conferencia_e_no_lancamento():
-    app_js = (RAIZ / "static/faturamento/js/app.js").read_text(encoding="utf-8")
-    assert "function confete" in app_js and "prefers-reduced-motion" in app_js
-    assert "FAT.confete" in (RAIZ / "static/faturamento/js/conferencia.js").read_text(encoding="utf-8")
-    lanc = (RAIZ / "static/faturamento/js/lancamento.js").read_text(encoding="utf-8")
-    assert "FAT.confete" in lanc and "timeZone: 'America/Fortaleza'" in lanc
+    confete = (WEB / "lib/confete.ts").read_text(encoding="utf-8")
+    assert "export function confete" in confete and "prefers-reduced-motion" in confete
+    for tela in ("conferencia/Conferencia.tsx", "lancamento/Lancamento.tsx"):
+        assert "confete(" in (WEB / "app/ferramentas/faturamento" / tela).read_text(encoding="utf-8")
+    assert "America/Fortaleza" in (WEB / "lib/formato.ts").read_text(encoding="utf-8")

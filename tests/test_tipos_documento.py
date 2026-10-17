@@ -2,15 +2,13 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import select
 
-from faturamento.models import OUTROS, TipoDocumento
+from faturamento.models import OUTROS
 from faturamento.services import RegraViolada
 from faturamento.services import lancamentos as svc_lanc
 from faturamento.services import resumo as svc_res
 from faturamento.services import tipos as svc_tipos
 
-from conftest import TOKEN_CSRF
 
 
 def _salvar(empresa, comp, tipo, valor, natan):
@@ -76,28 +74,3 @@ def test_outros_fica_fora_do_grafico_do_painel_e_agrupa_na_conferencia(app, db, 
     assert [t.nome for t in svc_lanc.tipos_do_mes(e, comp)] == ["NF-e Saídas", "Receb. Caixa"]
 
 
-def test_tela_cria_e_edita_tipo(login, db, tipos):
-    c = login("Mariana")  # qualquer usuário
-    html = c.get("/tipos-documento").get_data(as_text=True)
-    assert "NF-e Entradas" in html and "Adicionar tipo" in html
-    r = c.post("/tipos-documento", data={"csrf_token": TOKEN_CSRF, "nome": "Imposto Calculado", "sentido": "S"})
-    assert r.status_code == 302
-    novo = db.session.scalar(select(TipoDocumento).where(TipoDocumento.nome == "Imposto Calculado"))
-    assert novo is not None and novo.sentido == "S" and novo.codigo == "IMPOSTO_CALCULADO"
-    r = c.post("/tipos-documento", data={"csrf_token": TOKEN_CSRF, "tipo_id": novo.id, "nome": "Imposto Calculado",
-                                         "sentido": "O", "modelo": novo.modelo, "ordem": "5", "ativo": "1"})
-    assert r.status_code == 302
-    db.session.refresh(novo)
-    assert novo.sentido == "O" and novo.ordem == 5 and novo.ativo is True
-    # nome repetido volta com erro, sem gravar
-    r = c.post("/tipos-documento", data={"csrf_token": TOKEN_CSRF, "nome": "nfc-e", "sentido": "S"})
-    assert r.status_code == 200 and "Já existe um tipo chamado NFC-e" in r.get_data(as_text=True)
-    # o formulário da empresa mostra o grupo "Outros" com o tipo novo
-    html = c.get("/empresas/nova").get_data(as_text=True)
-    assert "Outros" in html and "Imposto Calculado" in html and "Cadastrar tipos de documento" in html
-
-
-def test_tela_exige_csrf(login):
-    c = login("Natan")
-    r = c.post("/tipos-documento", data={"nome": "Sem token", "sentido": "E"})
-    assert r.status_code in (400, 403)

@@ -325,7 +325,7 @@ function Editor({ inicial, refs }: { inicial: RespLancamento; refs: Referencias 
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Metrica icone="importar" rotulo="Entradas autorizadas (R$)" valor={moeda(totais.ent)} />
         <Metrica icone="seta" rotulo="Saídas autorizadas (R$)" valor={moeda(totais.sai)} tom="brand" />
         <Metrica icone="fechar" rotulo="Canceladas (R$)" valor={moeda(totais.canc)} />
@@ -336,7 +336,7 @@ function Editor({ inicial, refs }: { inicial: RespLancamento; refs: Referencias 
       <Grupo>
         {linhas.length ? (
           <div className="rolagem">
-            <table ref={tabela} className="tabela min-w-[1040px]">
+            <table ref={tabela} className="tabela min-w-[1100px]">
               <thead>
                 <tr>
                   <th />
@@ -361,7 +361,7 @@ function Editor({ inicial, refs }: { inicial: RespLancamento; refs: Referencias 
                       const travada = l.bateu, somenteLer = !editavel || travada, sujaL = suja(tid);
                       const celula = (c: Campo) => (
                         <td className="!px-1.5">
-                          <input className="celula" value={textos[tid][c]} readOnly={somenteLer} inputMode={c.startsWith("qtde") ? "numeric" : "decimal"}
+                          <input className={`celula ${c.startsWith("valor") ? "min-w-[124px]" : ""}`} value={textos[tid][c]} readOnly={somenteLer} inputMode={c.startsWith("qtde") ? "numeric" : "decimal"}
                                  aria-label={`${ROTULO_CAMPO[c]} · ${l.tipo.nome}`} aria-invalid={v.invalidos.includes(c) || undefined}
                                  onChange={(e) => mudar(tid, c, e.target.value)} onKeyDown={teclar} onPaste={(e) => colar(e, tid, c)} />
                         </td>

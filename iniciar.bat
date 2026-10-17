@@ -1,6 +1,6 @@
 @echo off
 REM Sistema de Faturamento CONAP - uso no proprio computador
-REM Na primeira vez cria o ambiente Python e instala as dependencias.
+REM Na primeira vez cria o ambiente Python; a cada abertura confere as dependencias (rapido se ja estao la).
 chcp 65001 >nul
 cd /d "%~dp0"
 
@@ -11,11 +11,12 @@ if not exist ".venv\Scripts\python.exe" (
     echo Preparando o ambiente pela primeira vez...
     %PY% -m venv .venv || goto erro
     ".venv\Scripts\python.exe" -m pip install --upgrade pip >nul
-    ".venv\Scripts\python.exe" -m pip install -r requirements.txt || goto erro
 )
+REM Sempre: depois de um "git pull" podem ter entrado dependencias novas.
+".venv\Scripts\python.exe" -m pip install --disable-pip-version-check -q -r requirements.txt || goto erro
 if not exist ".env" copy ".env.exemplo" ".env" >nul
 
-".venv\Scripts\python.exe" app.py
+".venv\Scripts\python.exe" servidor.py
 goto fim
 
 :erro

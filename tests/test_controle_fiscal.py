@@ -18,7 +18,6 @@ from faturamento.services import controle_fiscal as svc_cf
 from faturamento.services import empresas as svc_emp
 from faturamento.util import competencia
 
-from conftest import TOKEN_CSRF
 
 ESQUEMA = """
 CREATE TABLE responsavel (id INTEGER PRIMARY KEY, nome VARCHAR(80) NOT NULL UNIQUE,
@@ -227,67 +226,4 @@ def test_sessao_somente_leitura_recusa_escrita(banco_cf):
 
 # ---------------------------------------------------------------------------------------- telas
 
-def test_banner_nao_configurado(login, app):
-    app.config["FOLHA_DATABASE_URL"] = ""
-    html = login("Natan").get("/empresas").get_data(as_text=True)
-    assert "Controle Fiscal: não configurado" in html and "FOLHA_DATABASE_URL" in html
-    assert "Sincronizar com o Controle Fiscal" not in html
-    assert "/empresas/importar-responsaveis" in html
 
-
-def test_banner_configurado(login, banco_cf):
-    html = login("Natan").get("/empresas").get_data(as_text=True)
-    assert "Controle Fiscal: configurado" in html and "Sincronizar com o Controle Fiscal" in html
-    assert "/empresas/controle-fiscal" in html
-
-
-def test_pagina_sem_configuracao(login, app):
-    app.config["FOLHA_DATABASE_URL"] = ""
-    r = login("Natan").get("/empresas/controle-fiscal")
-    assert r.status_code == 200 and "não configurado" in r.get_data(as_text=True)
-
-
-def test_telas_previa_e_aplicar(login, banco_cf, nova_empresa, db):
-    e = nova_empresa("Mercadinho Milhã", responsavel="Natan")
-    banco_cf.empresa("101", "MERCADINHO MILHA", cnpj="12.345.678/0001-90", resp="Hellen", ativo=False)
-    c = login("Natan")
-    html = c.get("/empresas/controle-fiscal").get_data(as_text=True)
-    assert "Trocas valem a partir de" in html and "Ver prévia" in html and 'name="csrf_token"' in html
-
-    r = c.post("/empresas/controle-fiscal", data={"csrf_token": TOKEN_CSRF, "inicio": "2026-09"})
-    html = r.get_data(as_text=True)
-    assert r.status_code == 200
-    assert "Natan → Hellen" in html and "12.345.678/0001-90" in html
-    assert "casada pelo nome — confira" in html and "inativa no Controle Fiscal e ativa aqui" in html
-    assert "/empresas/controle-fiscal/aplicar" in html
-    db.session.expire_all()
-    assert db.session.get(Empresa, e.id).cnpj is None  # prévia não grava
-
-    # sem CSRF: recusado
-    assert c.post("/empresas/controle-fiscal/aplicar", data={"inicio": "2026-09"}).status_code == 400
-
-    r = c.post("/empresas/controle-fiscal/aplicar", data={"csrf_token": TOKEN_CSRF, "inicio": "2026-09"})
-    assert r.status_code == 302 and r.headers["Location"].endswith("/empresas")
-    html = c.get("/empresas").get_data(as_text=True)
-    assert "Controle Fiscal sincronizado: 1 responsável(is) trocado(s) a partir de 09/2026" in html
-    db.session.expire_all()
-    e = db.session.get(Empresa, e.id)
-    assert e.cnpj == "12345678000190" and e.ativa is True
-    assert svc_emp.responsavel_em(e, INICIO).nome == "Hellen"
-
-
-def test_tela_erro_de_conexao_sem_500(login, app, tmp_path):
-    app.config["FOLHA_DATABASE_URL"] = f"sqlite:///{(tmp_path / 'nao' / 'existe.db').as_posix()}"
-    c = login("Natan")
-    r = c.post("/empresas/controle-fiscal", data={"csrf_token": TOKEN_CSRF, "inicio": "2026-09"})
-    assert r.status_code == 200
-    assert "Não foi possível conectar ao banco do Controle Fiscal" in r.get_data(as_text=True)
-    r = c.post("/empresas/controle-fiscal/aplicar", data={"csrf_token": TOKEN_CSRF, "inicio": "2026-09"})
-    assert r.status_code == 302
-    html = c.get(r.headers["Location"]).get_data(as_text=True)
-    assert "Não foi possível conectar ao banco do Controle Fiscal" in html
-
-
-def test_competencia_invalida_na_previa(login, banco_cf):
-    r = login("Natan").post("/empresas/controle-fiscal", data={"csrf_token": TOKEN_CSRF, "inicio": "xx"})
-    assert r.status_code == 302

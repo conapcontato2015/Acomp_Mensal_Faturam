@@ -8,12 +8,11 @@ from decimal import Decimal
 
 import pytest
 
-from conftest import TOKEN_CSRF
 from openpyxl import Workbook
 from sqlalchemy import select
 
 from faturamento.models import (
-    ORIGEM_PLANILHA, Ajuste, Auditoria, Empresa, Importacao, Lancamento,
+    ORIGEM_PLANILHA, Ajuste, Auditoria, Empresa, Lancamento,
 )
 from faturamento.services import RegraViolada
 from faturamento.services import importacao as svc
@@ -288,76 +287,6 @@ def test_desfazer(app, db, usuarios, tipos, nova_empresa):
         svc.desfazer(imp, usuarios["Natan"])
 
 
-# ====================================================================== telas
-
-def _enviar(cli, dados=None, responsavel_id=None, nome="FATURAMENTO_V2.xlsx"):
-    form = {"arquivo": (io.BytesIO(dados or montar_planilha()), nome), "csrf_token": TOKEN_CSRF}
-    if responsavel_id:
-        form["responsavel_id"] = str(responsavel_id)
-    return cli.post("/importacao/previa", data=form, content_type="multipart/form-data")
-
-
-def _token(html: str) -> str:
-    import re
-    return re.search(r'name="token" value="([^"]+)"', html).group(1)
-
-
-def test_tela_fluxo_completo(app, db, login, usuarios):
-    cli = login("Natan")
-    assert cli.get("/importacao").status_code == 200
-    resp = _enviar(cli, responsavel_id=usuarios["Jaísa"].id)
-    assert resp.status_code == 200
-    html = resp.get_data(as_text=True)
-    assert "Será criada" in html and "Loja Alfa (Matriz)" in html
-    assert "sem quantidade" in html and "conta digitada" in html
-    assert "Totais por competência" in html
-    assert f'value="{usuarios["Jaísa"].id}" selected' in html
-    token = _token(html)
-
-    resp = cli.post("/importacao/confirmar", data={"csrf_token": TOKEN_CSRF, "token": token, "responsavel_id": usuarios["Jaísa"].id,
-                                                   "acao": "confirmar", "outras_carteiras": "1"},
-                    follow_redirects=True)
-    html = resp.get_data(as_text=True)
-    assert resp.status_code == 200
-    assert "Importação #1 concluída" in html and "4 lançamento(s) novo(s)" in html
-    assert "FATURAMENTO_V2.xlsx" in html and "Desfazer" in html
-    imp = db.session.get(Importacao, 1)
-    assert imp.responsavel.nome == "Jaísa" and imp.usuario.nome == "Natan"
-    alfa = db.session.scalar(select(Empresa).where(Empresa.nome == "Loja Alfa (Matriz)"))
-    assert alfa.historico_responsaveis[0].usuario.nome == "Jaísa"
-
-    # token já usado não importa de novo
-    resp = cli.post("/importacao/confirmar", data={"csrf_token": TOKEN_CSRF, "token": token, "responsavel_id": usuarios["Jaísa"].id},
-                    follow_redirects=True)
-    assert "expirada" in resp.get_data(as_text=True)
-    assert db.session.query(Importacao).count() == 1
-
-    resp = cli.post("/importacao/1/desfazer", data={"csrf_token": TOKEN_CSRF}, follow_redirects=True)
-    assert "Importação #1 desfeita" in resp.get_data(as_text=True)
-    db.session.expire_all()
-    assert db.session.get(Importacao, 1).desfeita is True
-    assert db.session.query(Lancamento).count() == 0
-
-
-def test_tela_cancelar_e_erros(app, db, login, dados_tmp):
-    cli = login("Natan")
-    token = _token(_enviar(cli).get_data(as_text=True))
-    resp = cli.post("/importacao/confirmar", data={"csrf_token": TOKEN_CSRF, "token": token, "acao": "cancelar"}, follow_redirects=True)
-    assert "Nada foi gravado" in resp.get_data(as_text=True)
-    assert not (dados_tmp / "importacoes" / f"{token}.json").exists()
-    assert db.session.query(Importacao).count() == 0
-
-    resp = _enviar(cli, b"lixo", nome="planilha.xlsx")
-    assert resp.status_code == 302
-    resp = cli.post("/importacao/previa", data={"csrf_token": TOKEN_CSRF, "arquivo": (io.BytesIO(b"a;b"), "x.csv")},
-                    content_type="multipart/form-data", follow_redirects=True)
-    assert "Formato não aceito" in resp.get_data(as_text=True)
-
-
-def test_tela_exige_usuario(client):
-    assert client.get("/importacao").status_code == 302
-
-
 # ====================================================================== regressões da revisão
 
 def _importar(db, usuarios, dados=None, quem="Natan", resp="Natan", **kw):
@@ -464,26 +393,6 @@ def test_confirmar_empresas_novas_para_outra_pessoa_exige_opcao(app, db, usuario
     db.session.rollback()
     imp = svc.confirmar(previa, usuarios["Mariana"], usuarios["Natan"], outras_carteiras=True)
     assert svc.resumo(imp)["lancamentos_criados"] == 4
-
-
-def test_tela_previa_mostra_outras_carteiras_e_desfazer_mostra_mantidos(app, db, login, usuarios, tipos, nova_empresa):
-    from faturamento.services import lancamentos as svc_lanc
-    nova_empresa("Loja Alfa (Matriz)", responsavel="Hellen", tipos_codigos=("NFCE",))
-    cli = login("Natan")
-    html = _enviar(cli, responsavel_id=usuarios["Natan"].id).get_data(as_text=True)
-    assert "<strong>2</strong> lançamento(s) de 1 empresa(s) são de carteiras de outras pessoas" in html
-    assert 'name="outras_carteiras"' in html and svc.OPCAO_OUTRAS in html
-    resp = cli.post("/importacao/confirmar", data={"csrf_token": TOKEN_CSRF, "token": _token(html), "acao": "confirmar",
-                                                   "responsavel_id": usuarios["Natan"].id}, follow_redirects=True)
-    assert "2 lançamento(s) de carteiras de outras pessoas não foram importados" in resp.get_data(as_text=True)
-    beta = db.session.scalar(select(Empresa).where(Empresa.nome == "Padaria Beta"))
-    svc_lanc.salvar_mes(beta, competencia("2026-02"), [{"tipo_id": tipos["NFSE_SAI"].id, "qtde_autor": "4",
-                                                         "valor_autor": "400"}], usuarios["Natan"])
-    db.session.commit()
-    resp = cli.post("/importacao/1/desfazer", data={"csrf_token": TOKEN_CSRF}, follow_redirects=True)
-    html = resp.get_data(as_text=True)
-    assert "1 lançamento(s) alterado(s) depois da importação foram mantidos" in html
-    assert "Padaria Beta · 02/2026 · NFS-e Saídas" in html
 
 
 def test_avaliar_conta_formula_grande_ou_profunda():

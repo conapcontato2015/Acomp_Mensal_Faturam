@@ -1,1 +1,1 @@
-Single-database configuration for Flask.
+Migrações do banco com Alembic puro (sem Flask). Use: python -m faturamento.migracoes upgrade | revision -m "..." | check

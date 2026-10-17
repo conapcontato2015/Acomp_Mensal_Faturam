@@ -226,3 +226,11 @@ def test_historico_com_mudancas_formatadas(entrar, nova_empresa, usuarios):
     assert mud["inicio"]["depois"] == "09/2026"
     assert j["pagina"] == 1 and j["temProxima"] is False and j["filtro"]["empresa"] == eid
     assert c.get(f"{API}/historico?usuario={usuarios['Hellen']}").json()["registros"] == []
+
+
+def test_controle_fiscal_sem_acesso_ao_banco_explica_sem_erro_500(entrar, tmp_path, opcoes):
+    c = entrar("Natan")
+    opcoes(FOLHA_DATABASE_URL=f"sqlite:///{(tmp_path / 'nao' / 'existe.db').as_posix()}")
+    r = c.post(f"{API}/controle-fiscal", json={"inicio": "2026-09"})
+    assert r.status_code == 200
+    assert r.json()["aplicado"] is False and r.json()["relatorio"]["erros"]

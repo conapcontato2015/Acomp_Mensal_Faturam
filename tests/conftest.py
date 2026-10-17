@@ -1,13 +1,15 @@
 """Fixtures compartilhadas. Banco SQLite em memória, recriado a cada teste."""
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from sqlalchemy import select
 
-from app import create_app
-from config import TestConfig
 from faturamento.bootstrap import semear
-from faturamento.extensions import db as _db
+from faturamento.config import TestConfig, configurar
+from faturamento.db import abrir_escopo, fechar_escopo
+from faturamento.db import db as _db
 from faturamento.models import TipoDocumento, Usuario
 from faturamento.services import empresas as svc_emp
 from faturamento.util import competencia
@@ -15,13 +17,15 @@ from faturamento.util import competencia
 
 @pytest.fixture()
 def app():
-    app = create_app(TestConfig)
-    with app.app_context():
-        _db.create_all()
-        semear()
-        yield app
-        _db.session.remove()
-        _db.drop_all()
+    """Configuração de teste ativa e banco recriado. ``app.config`` é a configuração em uso (altere no teste)."""
+    cfg = configurar(TestConfig)
+    token = abrir_escopo()
+    _db.create_all()
+    semear()
+    yield SimpleNamespace(config=cfg)
+    _db.session.remove()
+    _db.drop_all()
+    fechar_escopo(token)
 
 
 @pytest.fixture()
@@ -50,39 +54,6 @@ def nova_empresa(app, usuarios, tipos):
         return e
 
     return fabrica
-
-
-@pytest.fixture()
-def client(app):
-    return app.test_client()
-
-
-TOKEN_CSRF = "token-de-teste"
-
-
-@pytest.fixture()
-def csrf():
-    """csrf(client) -> põe um token CSRF conhecido na sessão e o devolve (campo ``csrf_token`` do form)."""
-
-    def preparar(cli):
-        with cli.session_transaction() as s:
-            s["fat_csrf"] = TOKEN_CSRF
-        return TOKEN_CSRF
-
-    return preparar
-
-
-@pytest.fixture()
-def login(client, usuarios, csrf):
-    """login('Natan') -> client já com o usuário na sessão."""
-
-    def entrar(nome="Natan"):
-        tok = csrf(client)
-        r = client.post("/entrar", data={"usuario_id": usuarios[nome].id, "csrf_token": tok})
-        assert r.status_code == 302
-        return client
-
-    return entrar
 
 
 @pytest.fixture()

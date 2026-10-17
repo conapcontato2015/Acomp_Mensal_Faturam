@@ -1,15 +1,16 @@
-"""Tela de conferência e exportações (Excel e página de impressão)."""
+"""Conferência (cartões por empresa) e a planilha Excel exportada."""
 from __future__ import annotations
 
-import re
 from decimal import Decimal
 from io import BytesIO
 
 import pytest
 from openpyxl import load_workbook
 
-from faturamento.extensions import db as _db
+from faturamento.db import db as _db
+from faturamento.services import exportacao as svc_exp
 from faturamento.services import lancamentos as svc_lanc
+from faturamento.services import resumo as svc_res
 
 
 def _lancar(empresa, comp, usuario, tipos, valores):
@@ -41,103 +42,33 @@ def cenario(app, nova_empresa, usuarios, tipos, comp):
     return {"alfa": alfa, "beta": beta, "gama": gama, "la": la, "lb": lb, "lg": lg}
 
 
-def _selos_habilitados(html: str) -> int:
-    return len([m for m in re.findall(r'<button type="button" class="selo"[^>]*>', html) if "disabled" not in m])
-
-
-def test_pagina_com_dados(login, cenario):
-    c = login("Natan")
-    r = c.get("/conferencia?competencia=2026-08")
-    assert r.status_code == 200
-    html = r.get_data(as_text=True)
-    assert "Conferência · Agosto de 2026" in html
-    assert "Alfa Comércio" in html and "Beta Serviços" in html
-    assert "Gama Hellen" not in html  # outra carteira
-    # valores com ajuste (186.864,95 + 1.295,50) e quantidades pt-BR
-    assert "188.160,45" in html and "6.492" in html
-    assert "±aj" in html
-    assert "Faltam 3" in html and "✓ Tudo bateu" in html
-    assert 'data-bateram="1"' in html and 'data-linhas="4"' in html
-    assert _selos_habilitados(html) > 0
-    assert "somente leitura" not in html.lower()
-
-
-def test_carteira_de_outra_pessoa_e_somente_leitura(login, cenario, usuarios):
-    c = login("Natan")
-    html = c.get(f"/conferencia?competencia=2026-08&carteira={usuarios['Hellen'].id}").get_data(as_text=True)
-    assert "Gama Hellen" in html and "Alfa Comércio" not in html
-    assert "Somente leitura" in html
-    assert 'class="selo"' in html
-    assert _selos_habilitados(html) == 0
-    assert re.search(r'data-acao="marcar"\s+disabled', html)
-
-
-def test_carteira_todos_e_somente_leitura(login, cenario):
-    html = login("Natan").get("/conferencia?competencia=2026-08&carteira=todos").get_data(as_text=True)
-    assert "Gama Hellen" in html and "Alfa Comércio" in html
-    assert _selos_habilitados(html) == 0
-
-
-def test_vista_pendencia_esconde_empresas_conferidas(login, cenario):
-    c = login("Natan")
-    html = c.get("/conferencia?competencia=2026-08&vista=pendencia").get_data(as_text=True)
-    assert 'aria-label="Alfa Comércio"' in html  # cartão exibido
-    assert 'aria-label="Beta Serviços"' not in html  # cartão escondido (o nome segue no seletor de empresas)
-    # os contadores continuam considerando a carteira toda
-    assert 'data-ok="1"' in html and 'data-pendentes="1"' in html
-
-
-def test_vazios(login, cenario, usuarios, db):
-    c = login("Natan")
-    html = c.get("/conferencia?competencia=2026-07").get_data(as_text=True)
-    assert "Nenhum lançamento com movimento" in html
-    svc_lanc.marcar_bateu_empresa(cenario["alfa"], cenario["la"]["NFCE"].competencia, True, usuarios["Natan"])
-    db.session.commit()
-    html = c.get("/conferencia?competencia=2026-08&vista=pendencia").get_data(as_text=True)
-    assert "já foram conferidas" in html
-    assert 'aria-label="Alfa Comércio"' not in html
-
-
-def test_api_bateu_reflete_na_pagina(login, cenario):
-    c = login("Natan")
-    lid = cenario["la"]["NFE_ENT"].id
-    r = c.put(f"/api/faturamento/v1/lancamentos/{lid}/bateu", json={"bateu": True})
-    assert r.status_code == 200 and r.get_json()["bateu"] is True
-    html = c.get("/conferencia?competencia=2026-08").get_data(as_text=True)
-    assert re.search(rf'data-lanc="{lid}"[^>]*aria-pressed="true"', html)
-    assert "Faltam 2" in html and 'data-bateram="2"' in html
-
-    eid = cenario["alfa"].id
-    r = c.put(f"/api/faturamento/v1/conferencia/{eid}/2026-08", json={"bateu": True})
-    assert r.status_code == 200
-    html = c.get("/conferencia?competencia=2026-08").get_data(as_text=True)
-    assert "Faltam" not in html and 'data-ok="2"' in html and 'data-pendentes="0"' in html
-
-
-def test_api_bateu_negado_para_outra_carteira(login, cenario):
-    c = login("Natan")
-    lid = cenario["lg"]["NFE_SAI"].id
-    r = c.put(f"/api/faturamento/v1/lancamentos/{lid}/bateu", json={"bateu": True})
-    assert r.status_code == 403
-
-
-def _ler_xlsx(resp):
-    wb = load_workbook(BytesIO(resp.data))
+def _ler_xlsx(conteudo: bytes):
+    wb = load_workbook(BytesIO(conteudo))
     ws = wb.active
     return wb, ws, [list(r) for r in ws.iter_rows(values_only=True)]
 
 
-def test_excel(login, cenario):
-    c = login("Natan")
-    r = c.get("/conferencia/excel?competencia=2026-08")
-    assert r.status_code == 200
-    assert "conferencia-2026-08.xlsx" in r.headers["Content-Disposition"]
-    wb, ws, linhas = _ler_xlsx(r)
+def test_cartoes_da_carteira_e_de_todos(cenario, usuarios, comp):
+    natan = usuarios["Natan"]
+    meus = svc_res.conferencia(comp, natan.id)
+    assert [c.empresa.nome for c in meus] == ["Alfa Comércio", "Beta Serviços"]
+    alfa, beta = meus
+    assert [b.sentido for b in alfa.blocos] == ["E", "S"]  # entradas e saídas em blocos separados
+    nfce = next(l for b in alfa.blocos for l in b.linhas if l.tipo.codigo == "NFCE")
+    assert nfce.total_qtde_autor == 6431 + 61  # já com o ajuste
+    assert (alfa.total, alfa.n_bateu, alfa.tudo_bateu) == (3, 0, False)
+    assert (beta.total, beta.n_bateu, beta.tudo_bateu) == (1, 1, True)
+    assert len(svc_res.conferencia(comp, None)) == 3
+
+
+def test_excel(cenario, usuarios, comp):
+    assert svc_exp.nome_arquivo_conferencia(comp) == "conferencia-2026-08.xlsx"
+    wb, ws, linhas = _ler_xlsx(svc_exp.planilha_conferencia(comp, svc_res.conferencia(comp, usuarios["Natan"].id)))
     assert ws.title == "Conferência 08-2026"
     assert linhas[0] == ["Empresa", "Responsável", "Sentido", "Tipo", "Qtde autorizada", "Valor autorizado",
                          "Qtde cancelada", "Valor cancelado", "Ajuste qtde", "Ajuste valor", "Bateu"]
     assert ws.freeze_panes == "A2"
-    assert ws["A1"].font.bold and ws["A1"].fill.fgColor.rgb.endswith("202F5A")
+    assert ws["A1"].font.bold
     corpo = linhas[1:]
     # Alfa: 1 entrada + subtotal, 2 saídas + subtotal; Beta: 1 entrada + subtotal
     assert len(corpo) == 7
@@ -166,51 +97,6 @@ def test_excel(login, cenario):
     assert ws.cell(row=2, column=6).number_format == "#,##0.00"
 
 
-def test_excel_carteira_vazia(login, app, usuarios):
-    r = login("Natan").get("/conferencia/excel?competencia=2026-08")
-    assert r.status_code == 200
-    _, _, linhas = _ler_xlsx(r)
+def test_excel_carteira_vazia(app, comp):
+    _, _, linhas = _ler_xlsx(svc_exp.planilha_conferencia(comp, []))
     assert len(linhas) == 1
-
-
-def test_imprimir(login, cenario):
-    c = login("Natan")
-    r = c.get("/conferencia/imprimir?competencia=2026-08&carteira=todos")
-    assert r.status_code == 200
-    html = r.get_data(as_text=True)
-    for nome in ("Alfa Comércio", "Beta Serviços", "Gama Hellen"):
-        assert nome in html
-    assert "logo-conap-cor.png" in html
-    assert "window.print()" in html and "Imprimir / salvar PDF" in html
-    assert 'class="side"' not in html
-    assert "Subtotal entradas" in html and "Subtotal saídas" in html
-    assert "Agosto de 2026" in html and "Todas as pessoas" in html
-
-
-def test_exige_usuario(client, cenario):
-    r = client.get("/conferencia")
-    assert r.status_code == 302
-
-
-def test_selecionar_empresas_exibe_so_as_escolhidas(login, cenario):
-    c = login("Natan")
-    alfa, beta = cenario["alfa"].id, cenario["beta"].id
-    html = c.get(f"/conferencia?competencia=2026-08&empresa={beta}").get_data(as_text=True)
-    assert 'aria-label="Beta Serviços"' in html and 'aria-label="Alfa Comércio"' not in html
-    # o seletor continua listando todas da carteira, com a escolhida marcada
-    assert f'name="empresa" value="{alfa}"' in html
-    assert re.search(rf'name="empresa" value="{beta}"\s+checked', html)
-    assert "Exibindo:" in html
-    # contadores refletem só a seleção
-    assert 'data-ok="1"' in html and 'data-pendentes="0"' in html
-    # várias empresas juntas (matriz + filial)
-    html = c.get(f"/conferencia?competencia=2026-08&empresa={alfa}&empresa={beta}").get_data(as_text=True)
-    assert 'aria-label="Beta Serviços"' in html and 'aria-label="Alfa Comércio"' in html
-    # Excel e PDF levam a seleção
-    assert f"empresa={alfa}" in html and "conferencia/excel" in html
-
-
-def test_selecao_de_outra_carteira_e_ignorada(login, cenario):
-    html = login("Natan").get("/conferencia?competencia=2026-08&empresa=99999").get_data(as_text=True)
-    assert 'aria-label="Alfa Comércio"' in html and 'aria-label="Beta Serviços"' in html
-    assert "Exibindo:" not in html

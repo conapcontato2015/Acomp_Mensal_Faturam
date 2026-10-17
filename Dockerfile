@@ -14,4 +14,5 @@ USER faturamento
 VOLUME ["/dados"]
 EXPOSE 8000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--access-logfile", "-", "wsgi:app"]
+# Um processo: as migrações rodam ao subir. As telas (web/out) já vêm compiladas no repositório.
+CMD ["uvicorn", "servidor:criar_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

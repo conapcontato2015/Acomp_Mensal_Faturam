@@ -69,7 +69,7 @@ export function Metrica({ icone, rotulo, valor, tom }: { icone?: string; rotulo:
     <div className="card flex items-center gap-3 p-4">
       {icone ? <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{ background: fundo, color: cor }}><Icone nome={icone} /></span> : null}
       <div className="min-w-0">
-        <div className="font-display text-[24px] font-semibold leading-tight tabular-nums" style={{ color: cor }}>{valor}</div>
+        <div className="font-display text-[20px] font-semibold leading-tight tabular-nums [overflow-wrap:anywhere] sm:text-[24px]" style={{ color: cor }}>{valor}</div>
         <div className="text-[13px] text-[var(--ink-2)]">{rotulo}</div>
       </div>
     </div>

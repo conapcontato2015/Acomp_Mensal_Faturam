@@ -14,13 +14,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 from sqlalchemy import select
 
-from faturamento.models import GRUPO_AUTOR, MOTIVO_CRUZAMENTO, MOTIVO_PADRAO_AJUSTE, Ajuste, FonteVersao, Importacao, Lancamento
+from faturamento.models import GRUPO_AUTOR, MOTIVO_CRUZAMENTO, MOTIVO_PADRAO_AJUSTE, FonteVersao
 from faturamento.services import cruzamento as svc
 from faturamento.services import importacao as svc_imp
 from faturamento.services import lancamentos as svc_lanc
 from faturamento.util import competencia
 
-from conftest import TOKEN_CSRF
 
 CHAVE = "chave-de-teste-123456"
 COMP = competencia("2026-08")
@@ -326,59 +325,4 @@ def test_aplicar_sem_linhas_ou_competencia_futura(app, usuarios):
 
 # ====================================================================== telas
 
-def test_tela_sem_configuracao_explica_o_env(login):
-    cli = login("Natan")
-    html = cli.get("/importacao/cruzamento").get_data(as_text=True)
-    assert "CRUZAMENTO_URL" in html and "FATURAMENTO_API_KEY" in html
 
-
-def test_tela_previa_e_aplicar(login, servidor, db, usuarios, tipos, empresas_teste):
-    a, _ = empresas_teste
-    servidor.dados = _dados_a()
-    cli = login("Natan")
-    r = cli.get("/importacao/cruzamento?competencia=2026-08&carteira=todos&ver=1")
-    html = r.get_data(as_text=True)
-    assert r.status_code == 200
-    assert "Mercadinho A" in html and "Ainda não lançado aqui" in html and "1.500,25" in html
-    assert "3 nota(s) só no Domínio" not in html  # 1 nota listada
-    assert "1 nota(s) só no Domínio" in html
-    token = html.split('name="token" value="')[1].split('"')[0]
-
-    r = cli.post("/importacao/cruzamento/aplicar", data={
-        "csrf_token": TOKEN_CSRF, "token": token, "competencia": "2026-08", "carteira": "todos",
-        "linha": [f"{a.id}:NFCE"], "acao": "aplicar"})
-    assert r.status_code == 302 and "/importacao" in r.headers["Location"]
-    assert lanc(a, tipos, "NFCE").qtde_autor == 100
-    imp = db.session.scalars(select(Importacao)).one()
-    pagina = cli.get("/importacao").get_data(as_text=True)
-    assert imp.arquivo in pagina
-    # token usado não serve de novo
-    r = cli.post("/importacao/cruzamento/aplicar", data={
-        "csrf_token": TOKEN_CSRF, "token": token, "linha": [f"{a.id}:NFCE"], "acao": "aplicar"}, follow_redirects=True)
-    assert "expirada" in r.get_data(as_text=True)
-
-
-def test_tela_por_empresa_e_erro_de_chave(app, login, servidor, empresas_teste):
-    a, _ = empresas_teste
-    servidor.dados = _dados_a()
-    cli = login("Natan")
-    r = cli.get(f"/importacao/cruzamento?competencia=2026-08&empresa={a.id}&ver=1")
-    assert "Mercadinho A" in r.get_data(as_text=True)
-    assert servidor.pedidos[-1]["input"]["cnpj"] == CNPJ_A
-    app.config["CRUZAMENTO_API_KEY"] = "errada-errada-errada"
-    html = cli.get("/importacao/cruzamento?competencia=2026-08&ver=1").get_data(as_text=True)
-    assert "recusou a chave" in html
-
-
-def test_aplicar_exige_csrf(login, servidor):
-    cli = login("Natan")
-    r = cli.post("/importacao/cruzamento/aplicar", data={"token": "x", "linha": ["1:NFCE"]})
-    assert r.status_code in (400, 403)
-
-
-def test_links_para_o_cruzamento(login, empresas_teste):
-    a, _ = empresas_teste
-    cli = login("Natan")
-    assert "Buscar no cruzamento" in cli.get(f"/lancamento?empresa={a.id}&competencia=2026-08").get_data(as_text=True)
-    assert "Verificar cruzamento" in cli.get("/?competencia=2026-08").get_data(as_text=True)
-    assert "Importar do cruzamento" in cli.get("/importacao").get_data(as_text=True)

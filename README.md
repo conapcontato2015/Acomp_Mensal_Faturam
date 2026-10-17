@@ -4,14 +4,18 @@ Substitui a planilha **FATURAMENTO_V2**. Cada pessoa (Hellen, Jaísa, Mariana, N
 competência, a quantidade e o valor dos documentos fiscais do relatório da SEFAZ (CT-e, NF-e, NFC-e,
 NFS-e, entradas e saídas). Na conferência, marca **Bateu** em cada linha que confere com o sistema contábil.
 
+Já segue o formato das ferramentas do **Conap Ferramentas** (backend Python/FastAPI, telas em Next.js,
+PostgreSQL, login por JWT da plataforma) e continua rodando sozinho no seu computador.
+
 ## Usar no seu computador (Windows)
 
 1. Instale o Python 3.11 ou superior (python.org; marque **Add python.exe to PATH**).
 2. Baixe este repositório (botão *Code › Download ZIP*) e descompacte numa pasta, ex.: `C:\Faturamento`.
 3. Dê dois cliques em **`iniciar.bat`**. Na primeira vez ele prepara tudo (1–2 minutos) e abre o navegador
-   em `http://localhost:5000`.
+   em `http://localhost:5000/ferramentas/faturamento/`. Depois de um `git pull`, o `iniciar.bat` instala sozinho
+   o que tiver de novo.
 4. Escolha seu nome na tela **Quem está usando?**.
-5. Para trazer os dados antigos: menu **Importar planilha** → envie o `FATURAMENTO_V2.xlsx` → confira a
+5. Para trazer os dados antigos: menu **Importações** → envie o `FATURAMENTO_V2.xlsx` → confira a
    prévia (avisos em laranja) → **Confirmar importação**. Dá para desfazer depois.
 
 Dados ficam em `dados/faturamento.db`, com backup automático diário em `dados/backups/` (30 cópias).
@@ -31,7 +35,7 @@ O seu computador precisa estar ligado com o sistema aberto.
 | Lançamento | Números do relatório SEFAZ por tipo; ajustes com motivo; totais ao vivo; colar bloco do Excel; Enter avança; gráfico de entradas × saídas por mês com a parte de ajuste destacada |
 | Conferência | Um cartão por empresa com o veredito ("Tudo bateu" / "Faltam N"); um clique marca a linha; filtro "Só com pendência"; detalhes (cancelados, ajustes, subtotais por sentido); Excel e impressão/PDF |
 | Empresas | CNPJ, tipos usados, ativa; **responsável editável por qualquer usuário**, com histórico e origem (manual, planilha, integração); importação de responsáveis por planilha |
-| Importar planilha | Importa a planilha antiga com prévia, avisos e "desfazer" |
+| Importações | Importa a planilha antiga e o cruzamento Domínio × SEFAZ, com prévia, avisos e "desfazer" |
 | Histórico | Quem mudou o quê e quando |
 
 Regras principais: quantidade e valor sempre juntos; sem contas digitadas nos campos (diferença = ajuste
@@ -80,7 +84,7 @@ por uma rota com chave, os números do mês de cada empresa:
    ```
 3. Reinicie o Faturamento.
 
-Onde usar: **Importar planilha › Importar do cruzamento**, **Lançamento › Buscar no cruzamento** (só a empresa
+Onde usar: **Importações › Importar do cruzamento**, **Lançamento › Buscar no cruzamento** (só a empresa
 aberta) e **Painel › Verificar cruzamento**. A prévia mostra, por empresa e tipo, a **versão anterior** (o que veio
 na última importação), a **nova versão** (o que está lá agora) e o **atual aqui**; você marca as linhas e importa.
 Regras (`faturamento/services/cruzamento.py`):
@@ -91,17 +95,30 @@ Regras (`faturamento/services/cruzamento.py`):
   "… (cruzamento)" e a lista das notas na observação. Reimportar troca só esse ajuste; os digitados à mão ficam.
 - Tipo sem relatório da SEFAZ importado lá para o mês não traz nada (zero lá não vira zero aqui).
 - Linha "Bateu" nunca é alterada; se mudou lá depois, a prévia avisa. Carteira de outra pessoa só "como substituto".
-- Cada importação é uma **versão** (`fat_fonte_versao`) e aparece em Importar planilha, com **Desfazer**.
+- Cada importação é uma **versão** (`fat_fonte_versao`) e aparece em Importações, com **Desfazer**.
 
-## Subir num servidor / na plataforma do escritório
+## No Conap Ferramentas
 
-- **Banco**: `DATABASE_URL=postgresql://...` (instale `requirements-servidor.txt`). As migrações rodam sozinhas.
-- **Login**: `MODO_AUTH=plataforma` — o usuário vem do cabeçalho `X-Remote-User` (configurável em
-  `AUTH_HEADER`), casado pelo nome ou por `external_id` do usuário.
-- **Plugado em outra app Flask**: `from faturamento import init_app; init_app(app, url_prefix="/faturamento")`.
-- **Serviço separado**: `docker build` com o `Dockerfile` (gunicorn em `wsgi:app`); `docker-compose.yml` sobe
-  junto um PostgreSQL de teste.
-- **API JSON**: `/api/faturamento/v1` — ver [docs/API.md](docs/API.md).
+O sistema já está no formato das ferramentas da plataforma:
+
+| Parte | Aqui | Na plataforma |
+| --- | --- | --- |
+| Backend | FastAPI, `faturamento.http.router` em `/api/faturamento/*` ([docs/API.md](docs/API.md)) | `app.include_router(router)` no backend dela |
+| Telas | Next.js em `web/`, rota `/ferramentas/faturamento/` | as páginas de `web/app/ferramentas/faturamento/` entram no front dela; `NEXT_PUBLIC_DENTRO_DA_PLATAFORMA=1` esconde o topo próprio |
+| Banco | SQLite (PC) ou PostgreSQL (`DATABASE_URL`); tabelas `fat_*` | PostgreSQL da plataforma |
+| Login | "Quem está usando?" (`MODO_AUTH=local`) | JWT da plataforma: `MODO_AUTH=plataforma` + `JWT_SEGREDO` ou `JWT_CHAVE_PUBLICA`, `JWT_COOKIE`, `JWT_CAMPO_ID`, `JWT_CAMPO_NOME` |
+| Empresas | Cadastro próprio (`EMPRESAS_FONTE=local`) | Cadastro geral (`EMPRESAS_FONTE=plataforma` + `PLATAFORMA_DATABASE_URL`, `PLATAFORMA_EMPRESAS_TABELA`, `PLATAFORMA_EMPRESAS_COLUNAS`), só leitura; tela **Empresas › Cadastro do Conap Ferramentas** liga as empresas pelo CNPJ |
+
+Permissões: por enquanto todos têm acesso total (carteira de outra pessoa é só leitura, com "substituto").
+A API sai em **camelCase** (como o resto da plataforma); o código Python segue em snake_case — a troca está
+num ponto só (`faturamento/http/json.py`).
+
+## Subir num servidor
+
+- **Banco**: `DATABASE_URL=postgresql://...` (instale `requirements-servidor.txt`). As migrações rodam sozinhas ao subir.
+- **Serviço**: `uvicorn servidor:criar_app --factory --host 0.0.0.0 --port 8000`, ou `docker build` com o
+  `Dockerfile`; `docker-compose.yml` sobe junto um PostgreSQL de teste.
+- **API JSON**: `/api/faturamento` — ver [docs/API.md](docs/API.md).
 - Tabelas com prefixo `fat_`; empresas ligáveis ao cadastro central por **CNPJ** ou `external_id`.
 
 ## Desenvolvimento
@@ -110,6 +127,11 @@ Regras (`faturamento/services/cruzamento.py`):
 pip install -r requirements-dev.txt
 python -m pytest -q
 python -m faturamento.migracoes revision -m "descrição"   # após mudar faturamento/models.py
+
+cd web && npm ci            # telas (Node 20+)
+npm run dev                 # http://localhost:3000/ferramentas/faturamento/ (API em 127.0.0.1:5000: rode python servidor.py)
+npm run check && npm run build   # gera web/out, que vai no repositório (o PC não precisa de Node)
 ```
 
-Estrutura: `faturamento/services/` concentra todas as regras; `views/` (telas) e `api/` só chamam os serviços.
+Estrutura: `faturamento/services/` concentra todas as regras; `faturamento/http/` (API) só chama os serviços;
+`web/` são as telas; `servidor.py` junta API + telas para rodar sozinho.

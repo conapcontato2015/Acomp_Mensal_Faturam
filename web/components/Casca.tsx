@@ -38,7 +38,7 @@ export function Casca({ children }: { children: React.ReactNode }) {
             <li>Ferramentas</li><li aria-hidden="true">›</li>
             <li><Link href={`${BASE}/`} className="hover:text-[var(--ink)]">Faturamento</Link></li>
           </ol>
-          <ul className="-mx-1 flex gap-1 overflow-x-auto pb-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:pb-0">
+          <ul className="relative -mx-1 flex gap-1 overflow-x-auto pb-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:pb-0">
             {SECOES.map((s) => {
               const ativa = s.caminho === atual.caminho;
               return (
