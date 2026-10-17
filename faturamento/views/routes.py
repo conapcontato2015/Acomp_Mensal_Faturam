@@ -16,6 +16,7 @@ from ..identidade import definir_usuario, exigir_usuario, modo_local, sair, usua
 from ..models import MOTIVOS_AJUSTE, SENTIDOS, Empresa, TipoDocumento, Usuario
 from ..services import RegraViolada
 from ..services import auditoria as aud
+from ..services.auditoria import chave_oculta, fmt_historico  # noqa: F401
 from ..services import empresas as svc_emp
 from ..services import fechamento as svc_fech
 from ..services import lancamentos as svc_lanc
@@ -149,32 +150,7 @@ def painel():
 
 # ------------------------------------------------------------------ lançamento
 
-ALTURA_GRAFICO = 180  # px
-
-
-def alturas_grafico(evolucao: list[dict], altura: int = ALTURA_GRAFICO) -> list[dict]:
-    """Altura (px) dos segmentos de cada mês: base (SEFAZ) e ajuste por cima.
-
-    Ajuste negativo reduz a base e não desenha segmento. Escala pelo maior total desenhado,
-    então nenhuma barra passa de ``altura`` e nenhuma altura é negativa.
-    """
-    def partes(base, aj):
-        base, aj = max(Decimal(base or 0), Decimal(0)), Decimal(aj or 0)
-        return (max(base + aj, Decimal(0)), Decimal(0)) if aj < 0 else (base, aj)
-
-    barras = [(partes(p["entradas"], p["entradas_ajuste"]), partes(p["saidas"], p["saidas_ajuste"])) for p in evolucao]
-    maximo = max((b + a for par in barras for b, a in par), default=Decimal(0))
-    esc = Decimal(altura) / maximo if maximo > 0 else Decimal(0)
-
-    def px(v):
-        return max(0, min(altura, int((v * esc).to_integral_value(rounding=ROUND_HALF_UP))))
-
-    saida = []
-    for (eb, ea), (sb, sa) in barras:
-        e_base, s_base = px(eb), px(sb)
-        saida.append({"e_base": e_base, "e_aj": min(px(ea), altura - e_base),
-                      "s_base": s_base, "s_aj": min(px(sa), altura - s_base)})
-    return saida
+from ..services.resumo import ALTURA_GRAFICO, alturas_grafico  # noqa: E402,F401
 
 
 @bp.get("/lancamento")
@@ -320,19 +296,6 @@ def tipos_documento():
 # ------------------------------------------------------------------ histórico
 
 POR_PAGINA_HISTORICO = 50
-_CHAVES_COMPETENCIA = {"inicio", "competencia", "competencias"}
-_RE_DATA = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
-_RE_DATA_HORA = re.compile(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(:\d{2}(\.\d+)?)?")
-_RE_COMP = re.compile(r"(\d{4})-(\d{2})")
-_RE_MOEDA = re.compile(r"-?\d+\.\d{2}")
-
-
-def chave_oculta(chave) -> bool:
-    """Chaves internas que não interessam a quem lê o histórico (listas de ids etc.)."""
-    k = str(chave)
-    return k.endswith("_ids") or k.startswith("_") or k in ("marcas",)
-
-
 @bp.app_template_filter("hora_br")
 def hora_br(v) -> str:
     """Horário UTC do cruzamento -> dd/mm/aaaa hh:mm de Fortaleza."""
@@ -340,35 +303,8 @@ def hora_br(v) -> str:
 
 
 @bp.app_template_filter("hist")
-def fmt_historico(v, chave: str = "") -> str:
-    """Valor do 'Detalhe' do histórico em pt-BR: datas, competências e moeda."""
-    if v is None or v == "":
-        return "—"
-    if v is True:
-        return "sim"
-    if v is False:
-        return "não"
-    if isinstance(v, dict):
-        partes = [f"{k}: {fmt_historico(x, k)}" for k, x in v.items() if not chave_oculta(k)]
-        return ", ".join(partes) if partes else "—"
-    if isinstance(v, (list, tuple)):
-        sep = "; " if any(isinstance(x, dict) for x in v) else ", "
-        return sep.join(fmt_historico(x, chave) for x in v) if v else "—"
-    if isinstance(v, int):
-        return fmt_inteiro(v)
-    if isinstance(v, float):
-        return fmt_moeda(v)
-    t = str(v)
-    comp = str(chave) in _CHAVES_COMPETENCIA
-    if m := _RE_DATA_HORA.fullmatch(t):
-        return f"{m[3]}/{m[2]}/{m[1]} {m[4]}:{m[5]}"
-    if m := _RE_DATA.fullmatch(t):
-        return f"{m[2]}/{m[1]}" if comp else f"{m[3]}/{m[2]}/{m[1]}"
-    if comp and (m := _RE_COMP.fullmatch(t)):
-        return f"{m[2]}/{m[1]}"
-    if _RE_MOEDA.fullmatch(t):
-        return fmt_moeda(Decimal(t))
-    return t
+def _filtro_hist(v, chave: str = "") -> str:
+    return fmt_historico(v, chave)
 
 
 @bp.get("/historico")

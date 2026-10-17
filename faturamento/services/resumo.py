@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from sqlalchemy import select
 
@@ -210,3 +210,31 @@ def evolucao(empresa: Empresa, ate: date, meses: int = 8) -> list[dict]:
         serie[l.competencia][s + "_aj"] += l.ajuste_valor_autor
     return [{"competencia": c, "rotulo": comp_rotulo(c), "entradas": v["E"], "entradas_ajuste": v["E_aj"],
              "saidas": v["S"], "saidas_ajuste": v["S_aj"]} for c, v in sorted(serie.items())]
+
+
+ALTURA_GRAFICO = 180  # px
+
+
+def alturas_grafico(evolucao: list[dict], altura: int = ALTURA_GRAFICO) -> list[dict]:
+    """Altura (px) dos segmentos de cada mês: base (SEFAZ) e ajuste por cima.
+
+    Ajuste negativo reduz a base e não desenha segmento. Escala pelo maior total desenhado,
+    então nenhuma barra passa de ``altura`` e nenhuma altura é negativa.
+    """
+    def partes(base, aj):
+        base, aj = max(Decimal(base or 0), Decimal(0)), Decimal(aj or 0)
+        return (max(base + aj, Decimal(0)), Decimal(0)) if aj < 0 else (base, aj)
+
+    barras = [(partes(p["entradas"], p["entradas_ajuste"]), partes(p["saidas"], p["saidas_ajuste"])) for p in evolucao]
+    maximo = max((b + a for par in barras for b, a in par), default=Decimal(0))
+    esc = Decimal(altura) / maximo if maximo > 0 else Decimal(0)
+
+    def px(v):
+        return max(0, min(altura, int((v * esc).to_integral_value(rounding=ROUND_HALF_UP))))
+
+    saida = []
+    for (eb, ea), (sb, sa) in barras:
+        e_base, s_base = px(eb), px(sb)
+        saida.append({"e_base": e_base, "e_aj": min(px(ea), altura - e_base),
+                      "s_base": s_base, "s_aj": min(px(sa), altura - s_base)})
+    return saida
