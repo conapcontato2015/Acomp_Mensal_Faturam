@@ -109,7 +109,7 @@ Regras (`faturamento/services/cruzamento.py`):
 ```bash
 pip install -r requirements-dev.txt
 python -m pytest -q
-flask --app app db migrate -m "descrição"   # após mudar faturamento/models.py
+python -m faturamento.migracoes revision -m "descrição"   # após mudar faturamento/models.py
 ```
 
 Estrutura: `faturamento/services/` concentra todas as regras; `views/` (telas) e `api/` só chamam os serviços.

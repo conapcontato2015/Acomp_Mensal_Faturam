@@ -9,9 +9,9 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
-from flask import current_app
 from sqlalchemy import select
 
+from ..config import config
 from ..extensions import db
 from ..models import ENTRADA, ORDEM_SENTIDOS, SAIDA, SENTIDOS, Empresa, Fechamento, Lancamento
 from ..util import comp_rotulo, somar_meses
@@ -160,7 +160,7 @@ def painel(comp: date, responsavel_id: int | None) -> list[LinhaPainel]:
         for f in db.session.scalars(select(Fechamento).where(Fechamento.empresa_id.in_(ids), Fechamento.competencia.in_([comp, anterior_comp]))):
             marcas[(f.empresa_id, f.competencia)] = f
     historico = _saidas_por_mes(ids, somar_meses(comp, -3), somar_meses(comp, -1))
-    limite = current_app.config.get("LIMITE_VARIACAO", 0.5)
+    limite = config.get("LIMITE_VARIACAO", 0.5)
     linhas = []
     for e in empresas:
         lancs = {l.tipo_id: l for l in atual.get(e.id, [])}

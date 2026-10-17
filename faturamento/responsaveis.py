@@ -15,7 +15,6 @@ import zipfile
 from dataclasses import dataclass, field
 from datetime import date
 
-from flask import current_app
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 from sqlalchemy import create_engine, text
@@ -23,6 +22,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError, SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
+from .config import config
 from .extensions import db
 from .models import ORIGEM_INTEGRACAO, ORIGEM_PLANILHA, Usuario
 from .services.empresas import buscar_por_cnpj, buscar_por_nome, definir_responsavel, responsavel_em
@@ -196,10 +196,10 @@ class ProvedorControleFiscal(ProvedorResponsaveis):
 
     @classmethod
     def do_config(cls) -> "ProvedorControleFiscal | None":
-        url = current_app.config.get("FOLHA_DATABASE_URL", "")
+        url = config.get("FOLHA_DATABASE_URL", "")
         if not url:
             return None
-        return cls(url, current_app.config.get("FOLHA_MAPA_RESPONSAVEIS", ""))
+        return cls(url, config.get("FOLHA_MAPA_RESPONSAVEIS", ""))
 
     def _engine(self):
         url = make_url(self.url)
@@ -254,13 +254,13 @@ class ProvedorControleFiscal(ProvedorResponsaveis):
 
 
 def provedor_configurado() -> ProvedorResponsaveis:
-    tipo = current_app.config.get("RESPONSAVEIS_PROVEDOR", "manual")
+    tipo = config.get("RESPONSAVEIS_PROVEDOR", "manual")
     if tipo == "controle_fiscal":
-        return ProvedorControleFiscal(current_app.config.get("FOLHA_DATABASE_URL", ""),
-                                      current_app.config.get("FOLHA_MAPA_RESPONSAVEIS", ""))
+        return ProvedorControleFiscal(config.get("FOLHA_DATABASE_URL", ""),
+                                      config.get("FOLHA_MAPA_RESPONSAVEIS", ""))
     if tipo == "api":
-        return ProvedorApi(current_app.config.get("RESPONSAVEIS_API_URL", ""),
-                           current_app.config.get("RESPONSAVEIS_API_TOKEN", ""))
+        return ProvedorApi(config.get("RESPONSAVEIS_API_URL", ""),
+                           config.get("RESPONSAVEIS_API_TOKEN", ""))
     return ProvedorManual()
 
 

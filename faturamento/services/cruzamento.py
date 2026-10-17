@@ -31,9 +31,9 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from flask import current_app
 from sqlalchemy import select
 
+from ..config import config
 from ..extensions import db
 from ..models import (
     GRUPO_AUTOR, MOTIVO_CRUZAMENTO, Ajuste, Empresa, FonteVersao, Importacao, Lancamento, TipoDocumento,
@@ -64,7 +64,7 @@ class ErroCruzamento(RegraViolada):
 # ====================================================================== leitura do cruzamento
 
 def configurado() -> bool:
-    cfg = current_app.config
+    cfg = config
     return bool(cfg.get("CRUZAMENTO_URL") and cfg.get("CRUZAMENTO_API_KEY"))
 
 
@@ -94,7 +94,7 @@ def buscar(comp: date, cnpj: str | None = None) -> dict:
     """Lê o cruzamento para a competência (opcionalmente uma empresa). Lança ``ErroCruzamento``."""
     if not configurado():
         raise ErroCruzamento("Cruzamento não configurado: informe CRUZAMENTO_URL e CRUZAMENTO_API_KEY no .env.")
-    cfg = current_app.config
+    cfg = config
     entrada = {"competencia": comp_iso(comp)}
     if cnpj:
         entrada["cnpj"] = so_digitos(cnpj)
@@ -415,7 +415,7 @@ def montar_previa(dados: dict, comp: date, resp_id: int | None, usuario: Usuario
 # ====================================================================== guarda da leitura entre as telas
 
 def _pasta() -> Path:
-    p = Path(current_app.config["DADOS_DIR"]) / "cruzamento"
+    p = Path(config["DADOS_DIR"]) / "cruzamento"
     p.mkdir(parents=True, exist_ok=True)
     return p
 

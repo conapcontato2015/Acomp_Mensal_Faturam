@@ -26,13 +26,13 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from flask import current_app
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.datetime import from_excel
 from openpyxl.utils.exceptions import InvalidFileException
 from sqlalchemy import select
 
+from ..config import config
 from ..extensions import db
 from ..models import (
     GRUPO_AUTOR, GRUPO_CANC, ORIGEM_PLANILHA, Ajuste, Empresa, Fechamento, Importacao, Lancamento,
@@ -503,7 +503,7 @@ def _listar_linhas(linhas: list[int], limite: int = 8) -> str:
 # ====================================================================== guarda entre requisições
 
 def _pasta() -> Path:
-    p = Path(current_app.config["DADOS_DIR"]) / "importacoes"
+    p = Path(config["DADOS_DIR"]) / "importacoes"
     p.mkdir(parents=True, exist_ok=True)
     return p
 

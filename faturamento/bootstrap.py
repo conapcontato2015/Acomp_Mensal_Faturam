@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from flask import Flask
 from sqlalchemy import select
 
 from .extensions import db
@@ -36,17 +35,38 @@ def semear() -> None:
     db.session.commit()
 
 
-def preparar_banco(app: Flask) -> None:
-    """Aplica as migrações (Alembic) e semeia. Chamado ao iniciar o sistema."""
-    from flask_migrate import upgrade
+PASTA_MIGRACOES = Path(__file__).resolve().parent.parent / "migrations"
 
-    uri = app.config["SQLALCHEMY_DATABASE_URI"]
+
+def config_alembic(url: str | None = None):
+    """Configuração do Alembic apontando para ``migrations/`` e para o banco ativo."""
+    from alembic.config import Config as AlembicConfig
+
+    from .config import config
+
+    cfg = AlembicConfig(str(PASTA_MIGRACOES / "alembic.ini"))
+    cfg.set_main_option("script_location", str(PASTA_MIGRACOES))
+    cfg.set_main_option("sqlalchemy.url", (url or config["SQLALCHEMY_DATABASE_URI"]).replace("%", "%%"))
+    return cfg
+
+
+def migrar(url: str | None = None) -> None:
+    """Aplica as migrações pendentes (Alembic) no banco ativo."""
+    from alembic import command
+
+    command.upgrade(config_alembic(url), "head")
+
+
+def preparar_banco(_app=None) -> None:
+    """Aplica as migrações e semeia. Chamado ao iniciar o sistema (o banco já deve estar configurado)."""
+    from .config import config
+
+    uri = config["SQLALCHEMY_DATABASE_URI"]
     if uri.startswith("sqlite:///"):
         Path(uri.replace("sqlite:///", "", 1)).parent.mkdir(parents=True, exist_ok=True)
-    with app.app_context():
-        pasta = Path(app.root_path).parent / "migrations"
-        if pasta.exists():
-            upgrade(directory=str(pasta))
-        else:  # pragma: no cover - instalação sem migrações
-            db.create_all()
-        semear()
+    if PASTA_MIGRACOES.exists():
+        migrar(uri)
+    else:  # pragma: no cover - instalação sem migrações
+        db.create_all()
+    semear()
+    db.session.remove()

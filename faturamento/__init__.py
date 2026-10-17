@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from flask import Blueprint, Flask
 
-from .extensions import db, migrate
+from .extensions import db
 
 bp = Blueprint(
     "faturamento", __name__,
@@ -32,9 +32,26 @@ def init_app(app: Flask, url_prefix: str | None = None) -> None:
         comp_curta, comp_extenso, comp_iso, comp_rotulo, competencia_atual, fmt_inteiro, fmt_moeda,
     )
 
+    from .config import config
+
     prefixo = (url_prefix if url_prefix is not None else app.config.get("URL_PREFIX", "")).rstrip("/")
-    db.init_app(app)
-    migrate.init_app(app, db)
+    # As regras leem a configuração ativa; aqui ela passa a ser a do app Flask (telas antigas).
+    config.vincular(app.config)
+    db.configurar(app.config["SQLALCHEMY_DATABASE_URI"])
+
+    from flask import g
+
+    from .db import abrir_escopo, fechar_escopo
+
+    @app.before_request
+    def _abrir_sessao():
+        g._fat_escopo = abrir_escopo()  # uma sessão por requisição, como no Flask-SQLAlchemy
+
+    @app.teardown_request
+    def _fechar_sessao(_exc=None):
+        token = g.pop("_fat_escopo", None)
+        if token is not None:
+            fechar_escopo(token)
     app.register_blueprint(bp, url_prefix=prefixo or None)
     app.register_blueprint(api_bp, url_prefix=f"{prefixo}/api/faturamento/v1")
 

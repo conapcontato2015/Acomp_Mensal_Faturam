@@ -21,7 +21,7 @@ A cada alteração pedida:
    python -m pytest -q
    ```
    Se mudou `faturamento/models.py`, gerar a migração (`flask --app app db migrate -m "..."`) e conferir
-   com `flask --app app db check`.
+   com `python -m faturamento.migracoes check`.
 4. **Commitar** na `claude/trabalho` com mensagem em português, curta, dizendo o que mudou e por quê.
 5. **Levar para o `main` e publicar** (fast-forward, sem merge commit):
    ```bash
