@@ -64,7 +64,7 @@ function EscolherUsuario({ sessao, aoEntrar }: { sessao: TSessao; aoEntrar: () =
       <div>
         <p className="text-[13px] font-medium text-[var(--brand)]">Faturamento</p>
         <h1 className="mt-1 text-[28px] font-semibold">Quem está usando?</h1>
-        <p className="mt-1 text-[var(--ink-2)]">Escolha seu nome. Seus lançamentos e a sua carteira ficam associados a ele.</p>
+        <p className="mt-1 text-[var(--ink-2)]">Os lançamentos e a carteira ficam associados ao nome escolhido.</p>
       </div>
       {erro ? <CaixaErro mensagens={erro} /> : null}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
