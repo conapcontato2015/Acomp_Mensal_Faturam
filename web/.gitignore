@@ -1,0 +1,5 @@
+node_modules/
+.next/
+next-env.d.ts
+*.tsbuildinfo
+# out/ É versionado: são as telas compiladas que o servidor.py serve (quem roda no PC não precisa de Node).
