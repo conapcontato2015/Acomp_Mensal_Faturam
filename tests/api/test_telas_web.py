@@ -12,7 +12,7 @@ PASTA = Path(__file__).resolve().parents[2] / "web" / "out"
 TELAS = ["", "lancamento", "conferencia", "conferencia/imprimir", "empresas", "empresas/editar",
          "empresas/responsaveis", "empresas/controle-fiscal", "empresas/plataforma", "tipos-documento",
          "importacao", "importacao/cruzamento", "historico"]
-PRONTAS = {"", "lancamento", "conferencia", "conferencia/imprimir"}  # telas já migradas; as demais entram a cada lote
+PRONTAS = set(TELAS)  # todas as telas já estão em Next.js
 
 
 @pytest.mark.parametrize("tela", sorted(PRONTAS))

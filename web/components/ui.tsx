@@ -1,7 +1,7 @@
 "use client";
 /* Peças de tela no padrão do Conap Ferramentas: cabeçalho, KPI, métricas, seletores, estados vazios. */
-import type { Competencia, Status, Usuario } from "@/lib/tipos";
-import { CLASSE_STATUS, ROTULO_STATUS } from "@/lib/tipos";
+import type { Competencia, Sentido, Status, Usuario } from "@/lib/tipos";
+import { CLASSE_SENTIDO, CLASSE_STATUS, ROTULO_STATUS } from "@/lib/tipos";
 import { Icone } from "./Icone";
 
 export function Cabecalho({ titulo, descricao, acoes, sobre }: { titulo: React.ReactNode; descricao?: React.ReactNode; acoes?: React.ReactNode; sobre?: React.ReactNode }) {
@@ -118,4 +118,24 @@ export function Grupo({ titulo, children, acoes, className = "" }: { titulo?: Re
       {children}
     </section>
   );
+}
+
+/** Etiqueta de um tipo de documento, colorida pelo sentido (entrada, saída, outros). */
+export function TagTipo({ t }: { t: { nome: string; sentido: Sentido } }) {
+  return <span className={`badge ${CLASSE_SENTIDO[t.sentido] ?? ""}`}>{t.nome}</span>;
+}
+
+/** Lista de um relatório de prévia (trocas, divergências…). Não aparece quando está vazia. */
+export function ListaRelatorio({ titulo, itens, tom, children }: { titulo: string; itens: string[]; tom?: "warn" | "danger"; children?: React.ReactNode }) {
+  if (!itens.length) return null;
+  const lista = (
+    <div className="flex flex-col gap-1.5">
+      <h3 className="text-[14px] font-semibold">{titulo} <span className="font-normal text-[var(--ink-3)]">({itens.length})</span></h3>
+      <ul className={`flex list-disc flex-col gap-0.5 pl-5 text-[13.5px] ${itens.length > 12 ? "max-h-[260px] overflow-y-auto" : ""}`}>
+        {itens.map((x, i) => <li key={i}>{x}</li>)}
+      </ul>
+      {children}
+    </div>
+  );
+  return tom ? <div className={`aviso aviso-${tom} block`}>{lista}</div> : lista;
 }

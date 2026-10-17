@@ -71,3 +71,6 @@ export interface RespConferencia {
   progresso: ProgressoConferencia; opcoes: { id: Id; nome: string }[]; escolhidas: Id[]; haLancamentos: boolean;
   geradoEm: string; cartoes: CartaoConferencia[];
 }
+
+export const ROTULO_ORIGEM: Record<string, string> = { manual: "Manual", planilha: "Planilha", integracao: "Integração" };
+export const CLASSE_SENTIDO: Record<string, string> = { E: "badge-info", S: "badge-brand", O: "" };
