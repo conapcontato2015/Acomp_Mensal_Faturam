@@ -60,9 +60,6 @@ def test_escrita_sem_json_recusada_csrf(entrar, nova_empresa):
     eid = nova_empresa()
     r = c.post(f"{API}/empresas/{eid}/responsavel", data={"usuarioId": 1})
     assert r.status_code == 415 and r.json()["erro"] == "tipo_conteudo"
-    # upload multipart só com o cabeçalho do front
-    r = c.post(f"{API}/importacoes/previa", files={"arquivo": ("a.xlsx", b"x")})
-    assert r.status_code == 415
 
 
 def test_saude(cliente):

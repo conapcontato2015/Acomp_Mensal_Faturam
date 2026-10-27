@@ -53,23 +53,6 @@ export async function api<T = unknown>(caminho: string, metodo: Metodo = "GET", 
   return tratar<T>(resp);
 }
 
-export async function enviarArquivo<T = unknown>(caminho: string, campos: Record<string, string | Blob>): Promise<T> {
-  const fd = new FormData();
-  for (const [k, v] of Object.entries(campos)) fd.append(k, v);
-  let resp: Response;
-  try {
-    resp = await fetch(API + caminho, {
-      method: "POST",
-      body: fd,
-      credentials: "same-origin",
-      headers: { Accept: "application/json", "X-Requested-With": "fetch" },
-    });
-  } catch {
-    throw new ErroApi(0, "rede", ["Sem conexão com o sistema. Ele está aberto no computador?"]);
-  }
-  return tratar<T>(resp);
-}
-
 /** Monta a query string ignorando vazios; listas viram parâmetros repetidos (?empresa=1&empresa=2). */
 export function qs(params: Record<string, string | number | boolean | null | undefined | (string | number)[]>): string {
   const u = new URLSearchParams();

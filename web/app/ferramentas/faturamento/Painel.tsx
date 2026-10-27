@@ -117,7 +117,7 @@ export function Painel() {
             ) : (
               <div className="vazio">
                 Nenhuma empresa {status !== "todos" ? "com esse status" : "nesta carteira"}.{" "}
-                {!p.total ? <><Link className="underline" href={rota("empresas")}>Cadastre empresas</Link> ou <Link className="underline" href={rota("importacao")}>importe a planilha</Link>.</> : null}
+                {!p.total ? <><Link className="underline" href={rota("empresas")}>Cadastre empresas</Link>.</> : null}
               </div>
             )}
           </Grupo>

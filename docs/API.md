@@ -53,12 +53,8 @@ Todas as rotas exigem usuário, exceto `GET /saude` e `GET /sessao`.
 | POST | `/empresas/{id}/responsavel` | `{usuarioId, inicio}` — troca a carteira a partir de `inicio` (origem `manual`) |
 | POST | `/empresas/plataforma/sincronizar` | `{aplicar, criarNovas, responsavelId}` — prévia/aplicação do cadastro de empresas do Conap Ferramentas |
 | GET / POST / PUT | `/tipos-documento[/{id}]` | Tipos (`?todos=true` com uso) / cria `{nome, sentido}` / altera `{nome, sentido, ordem, ativo, modelo}` |
-| GET | `/importacoes` | Importações feitas (planilha e cruzamento) |
-| POST | `/importacoes/previa` | Upload `arquivo` (.xlsx) + `responsavelId` → prévia com `token` |
-| POST | `/importacoes/confirmar` · `/importacoes/descartar` | `{token, responsavelId, outrasCarteiras}` · `{token}` |
+| GET | `/importacoes` | Importações feitas (cruzamento e as antigas de planilha, já registradas) |
 | POST | `/importacoes/{id}/desfazer` | Desfaz uma importação |
-| GET | `/responsaveis` · `/responsaveis/modelo.csv` | Provedor e competências · modelo CSV com a carteira atual |
-| POST | `/responsaveis/previa` · `/responsaveis/confirmar` | Upload `arquivo` + `inicio` → prévia com `token` · `{token, inicio}` |
 | GET / POST | `/controle-fiscal` | Configurado? · `{inicio, aplicar}` prévia/aplicação |
 | GET | `/cruzamento?competencia=` | Configurado? e competências |
 | GET | `/cruzamento/previa?competencia=&carteira=&empresa=` | Versão anterior × nova × atual por empresa e tipo, com `token` |

@@ -5,4 +5,4 @@
 3:[["children",{"s":"empresas","h":96,"c":"$Q4"}]]
 2:[["children",{"s":"faturamento","h":96,"c":"$Q3"}]]
 1:[["children",{"s":"ferramentas","h":96,"c":"$Q2"}]]
-0:{"b":"TEaQSNrs4d1YGWfE-0A33","t":{"t":{"s":"","h":80,"c":"$Q1"}}}
+0:{"b":"wkt9jcpPMYOXKlOVgjXBJ","t":{"t":{"s":"","h":80,"c":"$Q1"}}}

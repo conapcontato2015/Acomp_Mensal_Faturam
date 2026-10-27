@@ -1,10 +1,9 @@
-"""Importações pela API: planilha antiga, responsáveis, Controle Fiscal, cruzamento Domínio × SEFAZ e histórico.
+"""Importações pela API: Controle Fiscal, cruzamento Domínio × SEFAZ e histórico (sem XLSX).
 
-Planilhas e bancos sintéticos — nenhum dado de cliente.
+Bancos e respostas sintéticos — nenhum dado de cliente.
 """
 from __future__ import annotations
 
-import io
 import json
 import sqlite3
 import threading
@@ -13,96 +12,13 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
-from openpyxl import Workbook
 
 from .conftest import API
-
-UP = {"X-Requested-With": "fetch"}  # uploads multipart só com o cabeçalho do front
-CAB = ["EMPRESA", "COMP.", "TIPO", "QTDE_AUTOR", "VALOR_AUTOR", "AJUSTE_QTDE_AUTOR", "AJUSTE_VALOR_AUTOR",
-       "QTDE_CANC", "VALOR_CANC"]
-
 
 @pytest.fixture(autouse=True)
 def dados_tmp(app, tmp_path, opcoes):
     opcoes(DADOS_DIR=tmp_path)
     return tmp_path
-
-
-def _planilha(linhas) -> bytes:
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "DADOS"
-    ws.append([])
-    ws.append([None, *CAB])
-    for ln in linhas:
-        ws.append([None, *ln])
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
-
-
-AGO = datetime(2026, 8, 1)
-LINHAS = [
-    ["LOJA ALFA (MATRIZ)", AGO, "NFC-e", 100, 1000.5, 5, 50.25, 2, 20],
-    ["PADARIA BETA", AGO, "NF-e ENTRADAS", None, 500, None, None, None, None],  # valor sem qtde: aviso
-    ["PADARIA BETA", AGO, "MDF-e", 1, 10, None, None, None, None],               # tipo desconhecido
-]
-
-
-def test_planilha_previa_confirmar_e_desfazer(entrar, usuarios):
-    c = entrar("Natan")
-    r = c.post(f"{API}/importacoes/previa", headers=UP, data={"responsavelId": str(usuarios["Natan"])},
-               files={"arquivo": ("FATURAMENTO_V2.xlsx", _planilha(LINHAS))})
-    assert r.status_code == 200, r.json()
-    p = r.json()
-    assert p["aba"] == "DADOS" and p["nLancamentos"] == 2 and p["nAjustes"] == 1
-    assert [e["nome"] for e in p["empresas"]] == ["Loja Alfa (Matriz)", "Padaria Beta"] and all(e["nova"] for e in p["empresas"])
-    assert p["totais"][0]["competencia"]["valor"] == "2026-08" and p["totais"][0]["saidas"]["valor"] == "1050.75"
-    assert any("MDF-e" in a["texto"] for a in p["avisos"]) and any(a["destaque"] for a in p["avisos"])
-
-    r = c.post(f"{API}/importacoes/confirmar", json={"token": p["token"], "responsavelId": usuarios["Natan"]})
-    assert r.status_code == 200, r.json()
-    res = r.json()["resumo"]
-    assert res["lancamentosCriados"] == 2 and res["ajustesCriados"] == 1 and len(res["empresasCriadas"]) == 2
-    imp = r.json()["importacao"]
-    assert imp["fonte"] == "planilha" and imp["usuario"]["nome"] == "Natan"
-    assert c.post(f"{API}/importacoes/confirmar", json={"token": p["token"], "responsavelId": usuarios["Natan"]}).status_code == 400
-
-    lista = c.get(f"{API}/importacoes").json()["importacoes"]
-    assert [i["id"] for i in lista] == [imp["id"]] and lista[0]["lancamentosCriados"] == 2
-
-    assert entrar("Hellen").post(f"{API}/importacoes/{imp['id']}/desfazer", json={}).status_code == 422  # só quem importou
-    c = entrar("Natan")
-    r = c.post(f"{API}/importacoes/{imp['id']}/desfazer", json={})
-    assert r.status_code == 200 and r.json()["resultado"]["removidos"] == 2 and r.json()["importacao"]["desfeita"] is True
-
-
-def test_planilha_invalida_e_descartar(entrar):
-    c = entrar()
-    r = c.post(f"{API}/importacoes/previa", headers=UP, files={"arquivo": ("x.csv", b"a;b")})
-    assert r.status_code == 400 and "Formato" in r.json()["mensagens"][0]
-    r = c.post(f"{API}/importacoes/previa", headers=UP, files={"arquivo": ("x.xlsx", b"nao e zip")})
-    assert r.status_code == 400 and ".xlsx" in r.json()["mensagens"][0]
-    r = c.post(f"{API}/importacoes/previa", headers=UP, files={"arquivo": ("x.xlsx", _planilha(LINHAS))})
-    assert c.post(f"{API}/importacoes/descartar", json={"token": r.json()["token"]}).json() == {"ok": True}
-    assert c.post(f"{API}/importacoes/confirmar", json={"token": r.json()["token"], "responsavelId": 1}).status_code == 400
-
-
-def test_responsaveis_por_planilha(entrar, nova_empresa, usuarios):
-    eid = nova_empresa("Bio Seiva", cnpj="12345678000190")
-    c = entrar("Natan")
-    modelo = c.get(f"{API}/responsaveis/modelo.csv")
-    assert modelo.status_code == 200 and modelo.content.startswith("﻿".encode())
-    assert "12.345.678/0001-90;Bio Seiva;Natan;" in modelo.content.decode("utf-8-sig")
-    csv = "CNPJ;EMPRESA;RESPONSAVEL;INICIO\r\n12.345.678/0001-90;Bio Seiva;Hellen;\r\n;Inexistente;Natan;\r\n"
-    r = c.post(f"{API}/responsaveis/previa", headers=UP, data={"inicio": "2026-09"},
-               files={"arquivo": ("resp.csv", csv.encode())})
-    j = r.json()
-    assert j["relatorio"]["alteradas"] == ["Bio Seiva: Natan → Hellen"] and j["token"]
-    assert j["relatorio"]["empresasNaoEncontradas"] == ["Inexistente"]
-    r = c.post(f"{API}/responsaveis/confirmar", json={"token": j["token"], "inicio": "2026-09"})
-    assert r.status_code == 200
-    assert c.get(f"{API}/empresas/{eid}").json()["empresa"]["responsavel"]["nome"] == "Hellen"
 
 
 def test_controle_fiscal(entrar, nova_empresa, tmp_path, opcoes):
@@ -234,3 +150,12 @@ def test_controle_fiscal_sem_acesso_ao_banco_explica_sem_erro_500(entrar, tmp_pa
     r = c.post(f"{API}/controle-fiscal", json={"inicio": "2026-09"})
     assert r.status_code == 200
     assert r.json()["aplicado"] is False and r.json()["relatorio"]["erros"]
+
+
+@pytest.mark.parametrize("rota", ["/importacoes/previa", "/importacoes/confirmar", "/importacoes/descartar",
+                                  "/responsaveis/previa", "/responsaveis/confirmar"])
+def test_nao_ha_importacao_de_xlsx(entrar, rota):
+    """A carga inicial é feita fora do sistema: as rotas de upload de planilha não existem mais."""
+    c = entrar()
+    assert c.post(API + rota, json={"token": "x"}).status_code in (404, 405)
+    assert c.get(API + "/responsaveis/modelo.csv").status_code == 404

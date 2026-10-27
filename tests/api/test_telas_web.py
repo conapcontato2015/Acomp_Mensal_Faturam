@@ -10,7 +10,7 @@ from faturamento.config import TestConfig
 
 PASTA = Path(__file__).resolve().parents[2] / "web" / "out"
 TELAS = ["", "lancamento", "conferencia", "conferencia/imprimir", "empresas", "empresas/editar",
-         "empresas/responsaveis", "empresas/controle-fiscal", "empresas/plataforma", "tipos-documento",
+         "empresas/controle-fiscal", "empresas/plataforma", "tipos-documento",
          "importacao", "importacao/cruzamento", "historico"]
 PRONTAS = set(TELAS)  # todas as telas já estão em Next.js
 

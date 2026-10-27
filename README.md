@@ -15,8 +15,8 @@ PostgreSQL, login por JWT da plataforma) e continua rodando sozinho no seu compu
    em `http://localhost:5000/ferramentas/faturamento/`. Depois de um `git pull`, o `iniciar.bat` instala sozinho
    o que tiver de novo.
 4. Escolha seu nome na tela **Quem está usando?**.
-5. Para trazer os dados antigos: menu **Importações** → envie o `FATURAMENTO_V2.xlsx` → confira a
-   prévia (avisos em laranja) → **Confirmar importação**. Dá para desfazer depois.
+5. Os dados antigos (planilhas) não são importados pela tela: a carga inicial é feita fora do sistema. O menu
+   **Importações** traz o cruzamento Domínio × SEFAZ e o histórico, com **Desfazer**.
 
 Dados ficam em `dados/faturamento.db`, com backup automático diário em `dados/backups/` (30 cópias).
 Para encerrar, feche a janela preta do sistema.
@@ -34,8 +34,8 @@ O seu computador precisa estar ligado com o sistema aberto.
 | Painel do mês | Status de cada empresa da carteira (pendente, preenchida, sem movimento), progresso, alerta de variação das saídas (≥ 50% contra a média dos 3 meses anteriores) |
 | Lançamento | Números do relatório SEFAZ por tipo; ajustes com motivo; totais ao vivo; colar bloco do Excel; Enter avança; gráfico de entradas × saídas por mês com a parte de ajuste destacada |
 | Conferência | Um cartão por empresa com o veredito ("Tudo bateu" / "Faltam N"); um clique marca a linha; filtro "Só com pendência"; detalhes (cancelados, ajustes, subtotais por sentido); Excel e impressão/PDF |
-| Empresas | CNPJ, tipos usados, ativa; **responsável editável por qualquer usuário**, com histórico e origem (manual, planilha, integração); importação de responsáveis por planilha |
-| Importações | Importa a planilha antiga e o cruzamento Domínio × SEFAZ, com prévia, avisos e "desfazer" |
+| Empresas | CNPJ, tipos usados, ativa; **responsável editável por qualquer usuário**, com histórico e origem (manual, planilha, integração) |
+| Importações | Cruzamento Domínio × SEFAZ (com prévia e "desfazer") e histórico das importações. Não há importação de XLSX |
 | Histórico | Quem mudou o quê e quando |
 
 Regras principais: quantidade e valor sempre juntos; sem contas digitadas nos campos (diferença = ajuste
@@ -44,8 +44,7 @@ substituto"); entradas e saídas nunca se somam.
 
 ## Responsáveis vindos de outro sistema
 
-Hoje a carteira é editada à mão ou por planilha (Empresas › Importar responsáveis; o modelo CSV já vem
-preenchido). O encaixe do sistema externo está pronto em `faturamento/responsaveis.py`
+Hoje a carteira é editada à mão ou trazida do Controle Fiscal. O encaixe do sistema externo está pronto em `faturamento/responsaveis.py`
 (`ProvedorApi.buscar`): basta implementar a leitura e configurar `RESPONSAVEIS_PROVEDOR=api` no `.env`.
 
 ### Controle Fiscal (mesmo PC)

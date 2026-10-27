@@ -43,8 +43,6 @@ export function Empresas() {
     <>
       <Cabecalho titulo="Empresas" descricao="Responsável da carteira e tipos de documento que cada empresa usa. Só esses tipos aparecem no lançamento."
                  acoes={<>
-                   <Link className="btn" href={rota("empresas/responsaveis")}>Importar responsáveis</Link>
-                   <Link className="btn" href={rota("importacao")}>Importar planilha antiga</Link>
                    {plataforma ? <Link className="btn btn-solid" href={rota("empresas/plataforma")}><Icone nome="nuvem" /> Cadastro do Conap Ferramentas</Link>
                      : <Link className="btn btn-solid" href={rota("empresas/editar")}><Icone nome="mais" /> Nova empresa</Link>}
                  </>} />
@@ -63,7 +61,7 @@ export function Empresas() {
             <span className="text-[13px]">
               {r.controleFiscal ? <><strong>Controle Fiscal: configurado.</strong> Responsáveis e CNPJs podem ser trazidos de lá (só leitura, com prévia). </>
                 : <><strong>Controle Fiscal: não configurado</strong> (<code>FOLHA_DATABASE_URL</code> no <code>.env</code>). </>}
-              {r.provedorResponsaveis === "manual" ? "Responsáveis: troca manual aqui ou por planilha." : <>Responsáveis vêm de <strong>{r.provedorResponsaveis}</strong>; trocas feitas aqui ficam como &quot;Manual&quot;.</>}
+              {r.provedorResponsaveis === "manual" ? "Responsáveis: troca manual aqui." : <>Responsáveis vêm de <strong>{r.provedorResponsaveis}</strong>; trocas feitas aqui ficam como &quot;Manual&quot;.</>}
             </span>
           </div>
           {r.controleFiscal ? <Link className="btn btn-sm shrink-0" href={rota("empresas/controle-fiscal")}>Sincronizar com o Controle Fiscal</Link> : null}
@@ -119,7 +117,7 @@ function Tabela({ d, usuarios, inicio, filtrado }: { d: RespEmpresas; usuarios: 
       <div className="card vazio">
         Nenhuma empresa encontrada{filtrado ? " com esses filtros" : ""}.{" "}
         {d.fontePlataforma ? <Link className="underline" href={rota("empresas/plataforma")}>Trazer do Conap Ferramentas</Link>
-          : <><Link className="underline" href={rota("empresas/editar")}>Cadastre uma empresa</Link> ou <Link className="underline" href={rota("importacao")}>importe a planilha</Link></>}.
+          : <><Link className="underline" href={rota("empresas/editar")}>Cadastre uma empresa</Link></>}.
       </div>
     );
   }

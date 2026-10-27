@@ -1,22 +1,17 @@
 """De onde vem o responsável de cada empresa.
 
-Hoje a carteira é mantida à mão (qualquer usuário troca) ou por planilha. Quando o sistema
+Hoje a carteira é mantida à mão (qualquer usuário troca) ou pelo Controle Fiscal. Quando o sistema
 externo que define os responsáveis for ligado, basta implementar ``ProvedorApi.buscar`` (ou
 escrever outro provedor) e trocar ``RESPONSAVEIS_PROVEDOR`` no .env — o resto do sistema não muda.
 
 Todo provedor devolve uma lista de ``Atribuicao``; ``sincronizar`` aplica a lista gravando a
-origem (planilha/integração) no histórico e devolve um relatório.
+origem (manual/integração) no histórico e devolve um relatório.
 """
 from __future__ import annotations
 
-import csv
-import io
-import zipfile
 from dataclasses import dataclass, field
 from datetime import date
 
-from openpyxl import load_workbook
-from openpyxl.utils.exceptions import InvalidFileException
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError, SQLAlchemyError
@@ -24,7 +19,7 @@ from sqlalchemy.pool import NullPool
 
 from .config import config
 from .extensions import db
-from .models import ORIGEM_INTEGRACAO, ORIGEM_PLANILHA, Usuario
+from .models import ORIGEM_INTEGRACAO, Usuario
 from .services.empresas import buscar_por_cnpj, buscar_por_nome, definir_responsavel, responsavel_em
 from .util import ValorInvalido, competencia, competencia_atual, normalizar_nome, so_digitos
 
@@ -72,72 +67,6 @@ class ProvedorManual(ProvedorResponsaveis):
 
     def buscar(self) -> list[Atribuicao]:
         return []
-
-
-class ProvedorPlanilha(ProvedorResponsaveis):
-    """Lê .xlsx ou .csv com colunas: CNPJ e/ou EMPRESA, RESPONSAVEL e (opcional) INICIO (AAAA-MM ou MM/AAAA)."""
-
-    origem = ORIGEM_PLANILHA
-    nome = "planilha"
-
-    def __init__(self, conteudo: bytes, nome_arquivo: str):
-        self.conteudo = conteudo
-        self.nome_arquivo = nome_arquivo
-
-    def _linhas(self) -> list[list]:
-        try:
-            if self.nome_arquivo.lower().endswith((".xlsx", ".xlsm")):
-                wb = load_workbook(io.BytesIO(self.conteudo), read_only=True, data_only=True)
-                try:
-                    ws = wb.worksheets[0]
-                    return [list(r) for r in ws.iter_rows(values_only=True)]
-                finally:
-                    wb.close()
-            texto = self.conteudo.decode("utf-8-sig", errors="replace")
-            if not texto.strip():
-                return []
-            try:
-                dialeto = csv.Sniffer().sniff(texto[:2048], delimiters=";,\t")
-            except csv.Error:
-                # Sniffer falha em arquivo de uma coluna só: usa o padrão do Excel brasileiro
-                dialeto = type("PontoEVirgula", (csv.excel,), {"delimiter": ";"})
-            return [r for r in csv.reader(io.StringIO(texto), dialeto)]
-        except (csv.Error, zipfile.BadZipFile, InvalidFileException, KeyError, UnicodeDecodeError,
-                IndexError, OSError) as exc:
-            raise ValorInvalido(f"Arquivo ilegível: {exc}") from exc
-
-    def buscar(self) -> list[Atribuicao]:
-        linhas = self._linhas()
-        if not linhas:
-            return []
-        cab = [normalizar_nome(c) for c in linhas[0]]
-
-        def idx(*nomes):
-            for n in nomes:
-                if n in cab:
-                    return cab.index(n)
-            return None
-
-        i_cnpj, i_emp = idx("CNPJ"), idx("EMPRESA", "RAZAO SOCIAL", "NOME")
-        i_resp, i_ini = idx("RESPONSAVEL", "RESPONSÁVEL", "USUARIO"), idx("INICIO", "A PARTIR DE", "COMPETENCIA")
-        if i_resp is None or (i_cnpj is None and i_emp is None):
-            raise ValorInvalido("A planilha precisa das colunas RESPONSAVEL e CNPJ ou EMPRESA (na primeira linha).")
-        saida = []
-        for n, linha in enumerate(linhas[1:], start=2):
-            def val(i):
-                return linha[i] if i is not None and i < len(linha) and linha[i] is not None else None
-            resp = val(i_resp)
-            if not resp or not str(resp).strip():
-                continue
-            ini = val(i_ini)
-            saida.append(Atribuicao(
-                responsavel=str(resp).strip(),
-                cnpj=so_digitos(val(i_cnpj)) or None,
-                empresa=str(val(i_emp)).strip() if val(i_emp) else None,
-                inicio=competencia(ini) if ini else None,
-                linha=n,
-            ))
-        return saida
 
 
 class ProvedorApi(ProvedorResponsaveis):

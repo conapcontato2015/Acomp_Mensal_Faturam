@@ -53,7 +53,7 @@ function EscolherEmpresa({ competencia }: { competencia: string }) {
       {!d && ini.carregando ? <Carregando /> : null}
       {d ? (
         !d.minhas.length && !d.outras.length ? (
-          <div className="card vazio">Nenhuma empresa cadastrada. <Link className="underline" href={rota("empresas")}>Cadastre empresas</Link> ou <Link className="underline" href={rota("importacao")}>importe a planilha</Link>.</div>
+          <div className="card vazio">Nenhuma empresa cadastrada. <Link className="underline" href={rota("empresas")}>Cadastre empresas</Link>.</div>
         ) : (
           <>
             <div className="card flex flex-wrap items-end gap-3 p-4">
